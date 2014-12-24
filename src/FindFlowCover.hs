@@ -6,6 +6,7 @@ module FindFlowCover where
 
 import Control.Monad
 import Control.Monad.ST
+import Control.Applicative
 import qualified Data.Array as BA
 import Data.Array.ST
 import Data.Array.Unboxed
@@ -16,6 +17,8 @@ import qualified Data.Vector as V
 import Debug.Trace 
 
 import Grid
+import Data.STRef
+import Control.Monad.Extra (ifM)
 
 -- | The end-points of a trail
 data EPTrail = EndPoints { epSource :: Coord
@@ -44,7 +47,7 @@ srcReachable gg (endpoints, color) = let distG = gDists gg ! color in do
                                        
 -- | Check at all locations are reachable from at least one sink
 srcsReachable :: G s -> [(EPTrail, Int)] -> ST s Bool
-srcsReachable gg locs = liftM and $ mapM (srcReachable gg) locs
+srcsReachable gg locs = and <$> mapM (srcReachable gg) locs
 
 -- | Fill loc for the duration of body.
 withOcc :: G s -> Coord -> ST s (Search t) -> ST s (Search t)
@@ -68,9 +71,10 @@ searchFold (loc:n2Rest) body =
 -- | to carry on with the next color
 solveIter :: G s -> [(EPTrail,TrColor)] -> (OCCG s -> FTrail -> ST s (Search a)) -> ST s (Search a)
 solveIter gf ((trail,trailC):laterEps) cont
-       = do let leadsToSink (loc,_) = reachability gf [trailC] loc
-                colors = trailC : map snd laterEps
-                allReachable locs = liftM and $ mapM (reachability gf colors . fst) locs
+       = do msgCounter <- newSTRef 0                                        
+            let leadsToSink (loc,_) = reachability gf [trailC] loc
+                colors = (trace $ show trail) trailC : map snd laterEps
+                allReachable locs = and <$> mapM (reachability gf colors . fst) locs
                 loop (pos, route)
                   = if pos == sink then cont board route -- trail finished. continue.
                     else withOcc gf pos $ -- trace (show res) $ return res
@@ -78,14 +82,16 @@ solveIter gf ((trail,trailC):laterEps) cont
                       snextUnless (srcsReachable gf laterEps)  "sink unreachable" $ do
                             freeN1 <- freeN board pos -- get the free neighbours
                             -- Check that from each free neighbour a sink is reachable
-                            snextUnless (allReachable freeN1) "Neighbour isolated" $ do
-                                  freeN3 <- liftM (maybeAddSink pos) $ filterM leadsToSink freeN1
+                            snextIsolated msgCounter (allReachable freeN1) route $ do
+                                  freeN3 <- (maybeAddSink pos) <$> filterM leadsToSink freeN1
                                   if null freeN3 then trace "Stalled" $ return SNext
                                   -- try each of the neighbours in turn in order to find a route to the sink
                                   else do freeN2  <- singularToFront freeN3
                                           searchFold freeN2 (\(newPos, direction) -> 
-                                                   loop (newPos, route ++ [(pos, direction)]) ) 
-            loop (epSource trail,  [])
+                                                   loop (newPos, route ++ [(pos, direction)]) )
+            out <- loop (epSource trail,  [])
+            unsafeIOToST (print "End of loop.")
+            return out
   where maxCoord = gMaxbound gf
         board = gOcc gf 
         emptyBoard :: ST s (OCCG s)
@@ -97,22 +103,32 @@ solveIter gf ((trail,trailC):laterEps) cont
                                             Nothing -> locs
         singularToFront locs =   do singNb <- singularNeighbours maxCoord board locs
                                     return $! singNb ++ (locs \\ singNb)
-        snextUnless cond reason body = do b <- cond
-                                          if not b then return $! trace reason SNext else body 
-                                  
+                                    
+        snextUnless cond reason body = ifM cond body $ return $! trace reason SNext
+        snextIsolated msgCounter cond var body 
+             = ifM cond body $ tracePer 1000 msgCounter ("Isolated: " ++ show var) SNext
+
+tracePer :: Integral a => a -> STRef s a -> String -> b -> ST s b
+tracePer every msgCounter msg value = 
+                  do modifySTRef msgCounter (+1) 
+                     count <- readSTRef msgCounter 
+                     if mod count every == 0 then return $! trace msg value
+                                             else return value       
 
 
 -- | For each color find a route, search by backtracking (SNext triggers backtracking)
 solveGrid1 :: G s -> [(EPTrail, TrColor)] -> ST s (Search [FTrail])
 solveGrid1 gf eps@(_:ePoints) -- solveIter does the first trail, the continuation the rest
-   =  solveIter gf eps (\grid route -> 
-        if null ePoints then do 
-             elems <- getElems grid
-             return $! if and elems then SFinished [route] else trace "Missed" SNext 
-        else do res <- solveGrid1 gf ePoints
-                return $! case res of  
-                             (SFinished routes) -> SFinished (route:routes)
-                             SNext -> SNext )
+   =   do msgCounter <- newSTRef 0 
+          solveIter gf eps (\grid route -> 
+            if null ePoints then do 
+                 elems <- getElems grid
+                 if and elems then return $ SFinished [route] 
+                 else tracePer 1000 msgCounter "Missed" SNext 
+            else do res <- solveGrid1 gf ePoints
+                    return $! case res of  
+                                 (SFinished routes) -> SFinished (route:routes)
+                                 SNext -> SNext )
                         
 -- | Solve the Grid
 testIter :: Grid -> [FTrail]

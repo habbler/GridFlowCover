@@ -14,9 +14,11 @@ testGrid7 = Grid (6,6) [EndPoints (0,0) (4,4), EndPoints (4,1) (0,5)]
 testGrid8 = Grid (8,8) [EndPoints (0,0) (0,7), EndPoints (5,0) (7,7)]
 testGrid9 = Grid (8,8) [EndPoints (2,0) (3,0), EndPoints (4,0) (5,0), EndPoints (1,0) (6,0),EndPoints (0,0) (7,0) ]
 testGrid10 = Grid (6,6) [EndPoints (2,0) (3,0), EndPoints (1,0) (4,0), EndPoints (0,0) (5,0) ]
+testGrid11 = Grid (8,8) [EndPoints (2,0) (3,1), EndPoints (4,4) (5,5), EndPoints (1,3) (6,7),EndPoints (0,0) (7,0) ]
+testGrid12 = Grid (8,8) [EndPoints (2,0) (3,1), EndPoints (4,4) (5,5)] --, EndPoints (1,3) (6,7),EndPoints (0,0) (7,0) ]
 
 -- out1 = renderSvg $ renderDia SVG (SVGOptions (Dims 200 200) Nothing) (testOutputD testGrid1)        
 
 --main :: IO () 
-main = genOuput testGrid9 
+main = genOuput testGrid12
 -- :main -o test.svg -w 400
