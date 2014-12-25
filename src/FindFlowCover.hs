@@ -1,5 +1,5 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables,  FlexibleContexts #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 module FindFlowCover where
@@ -12,6 +12,7 @@ import Data.Array.ST
 import Data.Array.Unboxed
 import Data.Maybe
 import Data.List
+import Data.Ord
 import qualified Data.Vector as V
 -- import System.Random.MWC
 import Debug.Trace 
@@ -73,27 +74,35 @@ solveIter :: G s -> [(EPTrail,TrColor)] -> (OCCG s -> FTrail -> ST s (Search a))
 solveIter gf ((trail,trailC):laterEps) cont
        = do msgCounter <- newSTRef 0                                        
             let leadsToSink (loc,_) = reachability gf [trailC] loc
-                colors = (trace $ show trail) trailC : map snd laterEps
+                colors = trailC : map snd laterEps
                 allReachable locs = and <$> mapM (reachability gf colors . fst) locs
                 loop (pos, route)
-                  = if pos == sink then cont board route -- trail finished. continue.
+                  = if pos == sink then cont blocked route -- trail finished. continue.
                     else withOcc gf pos $ -- trace (show res) $ return res
                   -- do all unsolved sources have a possible route to a sink
                       snextUnless (srcsReachable gf laterEps)  "sink unreachable" $ do
-                            freeN1 <- freeN board pos -- get the free neighbours
+                            freeN1 <- freeN blocked pos -- get the free neighbours
                             -- Check that from each free neighbour a sink is reachable
                             snextIsolated msgCounter (allReachable freeN1) route $ do
                                   freeN3 <- (maybeAddSink pos) <$> filterM leadsToSink freeN1
                                   if null freeN3 then trace "Stalled" $ return SNext
-                                  -- try each of the neighbours in turn in order to find a route to the sink
-                                  else do freeN2  <- singularToFront freeN3
+                                  -- try each of the neighbours in turn in order to find a route to the sink                                  
+                                  else if True then
+                                       do freeN2  <- singularToFront freeN3
                                           searchFold freeN2 (\(newPos, direction) -> 
                                                    loop (newPos, route ++ [(pos, direction)]) )
-            out <- loop (epSource trail,  [])
-            unsafeIOToST (print "End of loop.")
-            return out
+                                  else do freeN2  <- singular freeN3
+                                          case freeN2 of
+                                                [(newPos,direction)] -> loop (newPos, route ++ [(pos, direction)])
+                                                []  -> do freeN4 <- sortByDistance freeN3
+                                                          searchFold freeN4 (\(newPos, direction) -> 
+                                                            loop (newPos, route ++ [(pos, direction)]) ) 
+                                                others  -> tracePer 1000 msgCounter "Singulars" SNext
+            loop (epSource trail,  [])
   where maxCoord = gMaxbound gf
-        board = gOcc gf 
+        blocked = gOcc gf
+        sinks = gSinks gf
+        dists = (gDists gf)!trailC
         emptyBoard :: ST s (OCCG s)
         emptyBoard = newArray ((0,0),maxCoord) False
         sink = epSink trail
@@ -101,12 +110,22 @@ solveIter gf ((trail,trailC):laterEps) cont
         maybeAddSink pos locs = case neighbourD sink pos of
                                             Just dir -> (sink,dir):locs
                                             Nothing -> locs
-        singularToFront locs =   do singNb <- singularNeighbours maxCoord board locs
+        singular = singularNeighbours maxCoord blocked sinks                                   
+        singularToFront locs =   do singNb <- singularNeighbours maxCoord blocked sinks locs
                                     return $! singNb ++ (locs \\ singNb)
                                     
         snextUnless cond reason body = ifM cond body $ return $! trace reason SNext
         snextIsolated msgCounter cond var body 
              = ifM cond body $ tracePer 1000 msgCounter ("Isolated: " ++ show var) SNext
+        sortByDistance locs = map fst <$> sortBy (comparing snd) 
+                                 <$> mapM (\p@(loc,direction) -> (p,) <$> readArray dists loc) locs      
+
+-- Note that the current square has already been filled, and singular checks for empty neighbours.
+-- The sink is also filled. Singular returns in the case of zero or one free neighbour.
+-- If zero, then we must take it, this can pay off if a sink is a neighbour.
+-- If there is one empty and no sink we must take it.
+-- If thee is one empty, and the sink, then we can ignore it.
+-- Sound like the sink should add one on...                                  
 
 tracePer :: Integral a => a -> STRef s a -> String -> b -> ST s b
 tracePer every msgCounter msg value = 
@@ -124,7 +143,7 @@ solveGrid1 gf eps@(_:ePoints) -- solveIter does the first trail, the continuatio
             if null ePoints then do 
                  elems <- getElems grid
                  if and elems then return $ SFinished [route] 
-                 else tracePer 1000 msgCounter "Missed" SNext 
+                 else tracePer 10 msgCounter "Missed" SNext 
             else do res <- solveGrid1 gf ePoints
                     return $! case res of  
                                  (SFinished routes) -> SFinished (route:routes)

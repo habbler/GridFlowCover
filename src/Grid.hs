@@ -25,6 +25,8 @@ type Direction = Int
 type TrColor = Int
 type OCCG s = STUArray s Coord Bool
 type DistG s = STUArray s Coord Distance
+type Distances s = Array TrColor (DistG s)
+type Sinks = Array TrColor Coord
 
 type Distance = Word8
 infDist :: Distance
@@ -32,8 +34,8 @@ infDist = 255
 
 data G s = GF { gMaxbound :: Coord
               , gOcc :: OCCG s -- The array of squares that are blocked
-              , gDists :: Array TrColor (DistG s) -- one distance array for each sink.
-              , gSinks ::  Array TrColor Coord -- the locations of the sinks  
+              , gDists :: Distances s -- one distance array for each sink.
+              , gSinks :: Sinks  -- the locations of the sinks  
               } 
               
 -- | Find the coord in direction d from give coord
@@ -60,6 +62,12 @@ neighbourD (xl, yl) (xn, yn)
   | otherwise = Nothing
 
 testNd = neighbourD (1,1) (2,1)                            
+
+isNeighbourOf :: Coord -> Coord -> Bool
+isNeighbourOf c1 c2 = isJust (neighbourD c1 c2)
+
+isNeighbourOfSink :: Sinks -> Coord -> Bool
+isNeighbourOfSink gSinks coord = any (isNeighbourOf coord) $ elems gSinks 
                                     
 {-# inline neighbours #-}
 -- | Apply function f to the neighbours of r0 taking into account the boundaries                                    
@@ -70,6 +78,7 @@ neighbours r0 f (bX,bY) (x,y)
        r3 <- ifm (y > 0)   (x,y-1) 2  r2
        ifm       (x > 0)   (x-1,y) 3  r3
   where ifm c l d r = if c then f l d r else return r
+  
 
                                  
 -- | Return the neighbours where occG is false
@@ -80,9 +89,16 @@ falseNeighbours maxCoords occG (x,y) = neighbours [] ifm maxCoords (x,y)
 
 -- | Return the neighbours where occG is false, plus the direction to them                        
 freeNeighbours ::  MaxCoords -> OCCG s -> Coord -> ST s [(Coord, Direction)]
-freeNeighbours maxCoords occG (x,y) = neighbours [] ifm maxCoords (x,y) 
+freeNeighbours maxCoords occG = neighbours [] ifm maxCoords 
   where ifm l d r = do occ <- readArray occG l
                        if occ then return r else return $! (l,d):r
+
+-- | Count the number of free neighbours (occG is false)                         
+countFreeNeighbours ::  MaxCoords -> OCCG s -> Coord -> ST s Int
+countFreeNeighbours maxCoords occG = neighbours 0 ifm maxCoords 
+  where ifm l d r = do occ <- readArray occG l
+                       if occ then return r else return $! r + 1 
+
                      
 -- | Find the lowest value from distG among the neighbours
 minNeighbours ::  MaxCoords -> DistG s -> Coord -> ST s Distance
@@ -209,14 +225,17 @@ reachability gg colors loc = anyM check colors
   where distG = gDists gg 
         check c =  (/= infDist) <$> readArray (distG!c) loc 
                            
--- | locations with only a single empty square next to them
-singularNeighbours :: MaxCoords -> OCCG s -> [(Coord, t)] -> ST s [(Coord, t)]
-singularNeighbours maxCoords occG neighb 
-  = liftM catMaybes $ mapM (\nb@(nbC,_) ->  do nb2 <-falseNeighbours maxCoords occG nbC 
-                                               return $ case nb2 of
-                                                          [x]       -> Just nb
-                                                          []        -> Just nb
-                                                          otherwise -> Nothing ) neighb                           
+-- | Locations with 0 or 1 ways in or out of them (note that the current trail head
+-- 
+singularNeighbours :: MaxCoords -> OCCG s -> Sinks -> [(Coord, t)] -> ST s [(Coord, t)]
+singularNeighbours maxCoords occG sinks neighb 
+  = liftM catMaybes $ mapM (\nb@(nbC,_) ->  do nCnt <- countFreeNeighbours maxCoords occG nbC
+                                               return $!if nCnt > 1 then Nothing
+                                                        else if nCnt == 0 then Just nb
+                                                        else if isNeighbourOfSink sinks nbC then Nothing
+                                                        else Just nb 
+                                            ) neighb
+
 -- | Print out an array of numbers                     
 printArr :: (IArray a e, PrintfArg e) => a (Int, Int) e -> IO ()
 printArr = printArray (printf "%3d") 5
