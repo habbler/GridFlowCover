@@ -66,8 +66,8 @@ testNd = neighbourD (1,1) (2,1)
 isNeighbourOf :: Coord -> Coord -> Bool
 isNeighbourOf c1 c2 = isJust (neighbourD c1 c2)
 
-isNeighbourOfSink :: Sinks -> Coord -> Bool
-isNeighbourOfSink gSinks coord = any (isNeighbourOf coord) $ elems gSinks 
+anyNeighbourOf :: [Coord] -> Coord -> Bool
+anyNeighbourOf cs coord = any (isNeighbourOf coord) cs 
                                     
 {-# inline neighbours #-}
 -- | Apply function f to the neighbours of r0 taking into account the boundaries                                    
@@ -198,17 +198,18 @@ initDist maxCoords occG sinkLoc
        
 -- | Given a list of sinks return the structure of distance arrays. All other squares are empty
 initG :: MaxCoords -> [Coord] -> ST s (G s)       
-initG maxbound sinks =  do occG <- initBoolG maxbound False
-                           -- We need to add all sinks to occG before we can start
-                           -- calculating any distances!!!
-                           mapM_ (\loc -> writeArray occG loc True) sinks 
-                           distG <- mapM (initDist maxbound occG) sinks
-                           let numSinks = length sinks
-                               createColorArr :: [e] -> Array Int e
-                               createColorArr = listArray (0,numSinks-1)
-                               dists   = createColorArr distG
-                               sinkArr = createColorArr sinks                           
-                           return $! GF maxbound occG dists sinkArr
+initG maxbound sinks 
+    =  do occG <- initBoolG maxbound False
+          -- We need to add all sinks to occG before we can start
+          -- calculating any distances!!!
+          mapM_ (\loc -> writeArray occG loc True) sinks 
+          distG <- mapM (initDist maxbound occG) sinks
+          let numSinks = length sinks
+              createColorArr :: [e] -> Array Int e
+              createColorArr = listArray (0,numSinks-1)
+              dists   = createColorArr distG
+              sinkArr = createColorArr sinks                           
+          return $! GF maxbound occG dists sinkArr
                            
 -- | When location is set to val, then update all distance arrays                          
 changeLoc :: G s -> Bool -> Coord -> ST s ()
@@ -227,12 +228,13 @@ reachability gg colors loc = anyM check colors
                            
 -- | Locations with 0 or 1 ways in or out of them (note that the current trail head
 -- 
-singularNeighbours :: MaxCoords -> OCCG s -> Sinks -> [(Coord, t)] -> ST s [(Coord, t)]
-singularNeighbours maxCoords occG sinks neighb 
+singularNeighbours :: MaxCoords -> OCCG s -> [Coord] -> Sinks -> [(Coord, t)] -> ST s [(Coord, t)]
+singularNeighbours maxCoords occG sources sinks neighb 
   = liftM catMaybes $ mapM (\nb@(nbC,_) ->  do nCnt <- countFreeNeighbours maxCoords occG nbC
                                                return $!if nCnt > 1 then Nothing
                                                         else if nCnt == 0 then Just nb
-                                                        else if isNeighbourOfSink sinks nbC then Nothing
+                                                        else if anyNeighbourOf (elems sinks) nbC then Nothing
+                                                        else if anyNeighbourOf sources nbC then Nothing
                                                         else Just nb 
                                             ) neighb
 

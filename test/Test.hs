@@ -20,5 +20,5 @@ testGrid12 = Grid (8,8) [EndPoints (2,0) (3,1), EndPoints (4,4) (5,5)] --, EndPo
 -- out1 = renderSvg $ renderDia SVG (SVGOptions (Dims 200 200) Nothing) (testOutputD testGrid1)        
 
 --main :: IO () 
-main = genOuput testGrid12
+main = genOuput testGrid12 
 -- :main -o test.svg -w 400

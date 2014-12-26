@@ -38,6 +38,20 @@ type FTrail = [(Coord, Direction)]
 
 data Search a = SNext | SFinished a deriving Show
 
+handleSNext :: (Monad m, Show t) => m (Search t) -> m (Search t) -> m (Search t)
+handleSNext mv f = do v <- mv
+                      case v of
+                        SNext -> do v <- f
+                                    trace ("Called: " ++ (show v)) f
+                        _ -> mv 
+
+handleSFinished :: Monad m => m (Search t) -> (t -> t) ->  m (Search t)
+handleSFinished mv f = do v <- mv
+                          case v of
+                            SFinished r -> return $ SFinished (f r)
+                            _ -> mv 
+
+
 type SFTrail = Search FTrail
 
 -- | Check that for color there is a route from the source to the sink
@@ -70,37 +84,43 @@ searchFold (loc:n2Rest) body =
 
 -- | Find a route from the source to the sink. In the case of success, call the continuation cont,
 -- | to carry on with the next color
-solveIter :: G s -> [(EPTrail,TrColor)] -> (OCCG s -> FTrail -> ST s (Search a)) -> ST s (Search a)
-solveIter gf ((trail,trailC):laterEps) cont
-       = do msgCounter <- newSTRef 0                                        
-            let leadsToSink (loc,_) = reachability gf [trailC] loc
-                colors = trailC : map snd laterEps
-                allReachable locs = and <$> mapM (reachability gf colors . fst) locs
-                loop (pos, route)
-                  = if pos == sink then cont blocked route -- trail finished. continue.
-                    else withOcc gf pos $ -- trace (show res) $ return res
-                  -- do all unsolved sources have a possible route to a sink
-                      snextUnless (srcsReachable gf laterEps)  "sink unreachable" $ do
-                            freeN1 <- freeN blocked pos -- get the free neighbours
-                            -- Check that from each free neighbour a sink is reachable
-                            snextIsolated msgCounter (allReachable freeN1) route $ do
-                                  freeN3 <- (maybeAddSink pos) <$> filterM leadsToSink freeN1
-                                  if null freeN3 then trace "Stalled" $ return SNext
-                                  -- try each of the neighbours in turn in order to find a route to the sink                                  
-                                  else if True then
-                                       do freeN2  <- singularToFront freeN3
-                                          searchFold freeN2 (\(newPos, direction) -> 
-                                                   loop (newPos, route ++ [(pos, direction)]) )
-                                  else do freeN2  <- singular freeN3
-                                          case freeN2 of
-                                                [(newPos,direction)] -> loop (newPos, route ++ [(pos, direction)])
-                                                []  -> do freeN4 <- sortByDistance freeN3
-                                                          searchFold freeN4 (\(newPos, direction) -> 
-                                                            loop (newPos, route ++ [(pos, direction)]) ) 
-                                                others  -> tracePer 1000 msgCounter "Singulars" SNext
-            loop (epSource trail,  [])
+solveIter :: (Show a) => G s -> [(EPTrail,TrColor)] -> (OCCG s -> FTrail -> ST s (Search a)) -> ST s (Search a)
+solveIter gf endPoints@((trail,trailC):laterEps) cont
+    = do msgCounter <- newSTRef 0                                        
+         let leadsToSink (loc,_) = reachability gf [trailC] loc
+             colors = trailC : map snd laterEps
+             allReachable locs = and <$> mapM (reachability gf colors . fst) locs
+             loop (pos, route)
+               = if pos == sink then cont blocked route -- trail finished. continue.
+                 else withOcc gf pos $ -- trace (show res) $ return res
+               -- do all unsolved sources have a possible route to a sink
+                   snextUnless (srcsReachable gf laterEps)  "sink unreachable" $ do
+                       freeN1 <- freeN blocked pos -- get the free neighbours
+                       -- Check that from each free neighbour a sink is reachable
+                       snextIsolated msgCounter (allReachable freeN1) route $ do
+                           freeN3 <- (maybeAddSink pos) <$> filterM leadsToSink freeN1
+                           if null freeN3 then trace "Stalled" $ return SNext
+                           -- try each of the neighbours in turn in order to find a route to the sink                                  
+                           else do freeN2  <- singular freeN3
+                                   case freeN2 of
+                                         [(newPos1,direction1)] -> -- trace (show freeN2)
+--                                            searchFold (toFront freeN2 freeN3) (\(newPos, direction) -> 
+--                                               loop (newPos, route ++ [(pos, direction)]) ) 
+                                             loop (newPos1, route ++ [(pos, direction1)])
+--                                                case v of
+--                                                     SNext -> (searchFold (freeN3 \\ freeN2) (\(newPos, direction) -> 
+--                                                                 loop (newPos, route ++ [(pos, direction)])))
+--                                                     _ -> return v             
+--                                                      `handleSFinished`
+--                                                      (\r -> trace ("After singular" ++ (show freeN2)) r))              
+                                         []  -> do freeN4 <- sortByDistance freeN3
+                                                   searchFold freeN4 (\(newPos, direction) -> 
+                                                     loop (newPos, route ++ [(pos, direction)])) 
+                                         others -> tracePer 1000 msgCounter "Singulars" SNext
+         loop (epSource trail,  [])
   where maxCoord = gMaxbound gf
         blocked = gOcc gf
+        sources = map (epSource . fst) endPoints 
         sinks = gSinks gf
         dists = (gDists gf)!trailC
         emptyBoard :: ST s (OCCG s)
@@ -110,10 +130,7 @@ solveIter gf ((trail,trailC):laterEps) cont
         maybeAddSink pos locs = case neighbourD sink pos of
                                             Just dir -> (sink,dir):locs
                                             Nothing -> locs
-        singular = singularNeighbours maxCoord blocked sinks                                   
-        singularToFront locs =   do singNb <- singularNeighbours maxCoord blocked sinks locs
-                                    return $! singNb ++ (locs \\ singNb)
-                                    
+        singular = singularNeighbours maxCoord blocked sources sinks                                    
         snextUnless cond reason body = ifM cond body $ return $! trace reason SNext
         snextIsolated msgCounter cond var body 
              = ifM cond body $ tracePer 1000 msgCounter ("Isolated: " ++ show var) SNext
@@ -125,7 +142,10 @@ solveIter gf ((trail,trailC):laterEps) cont
 -- If zero, then we must take it, this can pay off if a sink is a neighbour.
 -- If there is one empty and no sink we must take it.
 -- If thee is one empty, and the sink, then we can ignore it.
--- Sound like the sink should add one on...                                  
+-- Sound like the sink should add one on...           
+
+toFront :: Eq a => [a] -> [a] -> [a]
+toFront a b = a ++ (b \\ a)                       
 
 tracePer :: Integral a => a -> STRef s a -> String -> b -> ST s b
 tracePer every msgCounter msg value = 
@@ -158,7 +178,11 @@ testIter (Grid size endpoints) = runST $  do gf <- createInitialGrid
                                                SFinished trail -> return trail
                                                SNext -> error "No solution exists"
   where maxBound = maxCoords size
-        createInitialGrid = initG maxBound $ map epSink endpoints
+        -- Note that we can't set the sources to blocked in the current design,
+        -- as we need distances to be calculated for the sources, as reachability
+        -- is defined as the distance not being infinity.
+        -- This means that we need to exclude sources as being an empty square during the search...
+        createInitialGrid = initG maxBound (map epSink endpoints)
 
 -- | Solve the grid and return solutions as coordinates                           
 traceTrail :: Grid -> [[Coord]]                          

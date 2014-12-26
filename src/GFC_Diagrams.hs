@@ -36,16 +36,16 @@ testOutputD grid = plotTrails (gSize grid) (trailGrid grid)
 genOuput :: Grid -> IO ()
 genOuput test = defaultMain (testOutputD test)
 
-testGrid9 = Grid (8,8) [EndPoints (2,0) (3,0), EndPoints (4,0) (5,0), EndPoints (1,0) (6,0),EndPoints (0,0) (7,0) ]
+--testGrid9 = Grid (8,8) [EndPoints (2,0) (3,0), EndPoints (4,0) (5,0), EndPoints (1,0) (6,0),EndPoints (0,0) (7,0) ]
 testGrid9a = Grid (8,8) [EndPoints (1,0) (6,0), EndPoints (2,1) (3,1), EndPoints (0,0) (7,0), EndPoints (4,1) (5,1) ]
-testGrid12 = Grid (8,8) [EndPoints (2,0) (3,2), EndPoints (4,4) (5,6)] --, EndPoints (1,3) (6,7),EndPoints (0,0) (7,0) ]
+--testGrid12 = Grid (8,8) [EndPoints (2,0) (3,2), EndPoints (4,4) (5,5)] --, EndPoints (1,3) (6,7),EndPoints (0,0) (7,0) ]
 
 -- out1 = renderSvg $ renderDia SVG (SVGOptions (Dims 200 200) Nothing) (testOutputD testGrid1)        
 
 --main :: IO () 
 main = genOuput testGrid9a
 main1 = defaultMain (plotTrails (8,8) [map fst 
-          [((4,0),0),((4,1),0),((4,2),1),((5,2),1),((6,2),0),((6,3),0),((6,4),0),((6,5),3),((5,5),3),((4,5),3),((3,5),0),((3,6),3),((2,6),2),((2,5),3),((1,5),2),((1,4),1),((2,4),2),((2,3),3),((1,3),2),((1,2),2)]
+          [((4,4),0),((4,5),3),((3,5),2),((3,4),2),((3,3),1),((4,3),1),((5,3),1),((6,3),2),((6,2),2),((6,1),3),((5,1),0),((5,2),3),((4,2),2),((4,1),2),((4,0),1),((5,0),1),((6,0),1),((7,0),0),((7,1),0),((7,2),0),((7,3),0),((7,4),0),((7,5),0),((7,6),0),((7,7),3),((6,7),3),((5,7),3),((4,7),3),((3,7),3),((2,7),3),((1,7),3),((0,7),2),((0,6),1),((1,6),2),((1,5),3),((0,5),2),((0,4),2),((0,3),2),((0,2),1),((1,2),0),((1,3),0),((1,4),1)]
           ])
 -- :main -o test2.svg -w 400
  
