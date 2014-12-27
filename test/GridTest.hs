@@ -2,18 +2,20 @@
 module GridTest where
 import Grid
 
-import Test.HUnit
+-- import Test.HUnit
 import Data.Maybe
 
 import Test.Framework
 
-import Control.Monad.ST
-import Control.Monad
+import Control.Monad.ST( ST, runST )
+import Control.Monad.ST.Unsafe( unsafeIOToST )
 import Data.Array.ST
 import Data.Array.Unboxed
 import Control.Applicative
-import Debug.Trace
+-- import Debug.Trace
              
+checkDistance :: MaxCoords -> OCCG s -> DistG s -> Coord -> Coord  
+                 -> ST s (Maybe (Coord, Distance, Distance))
 checkDistance maxCoords occG distG sink loc = 
     do locDist <- readArray distG loc
        filled <- readArray occG loc
@@ -27,26 +29,26 @@ checkDistance maxCoords occG distG sink loc =
         return $! if expected_dist == locDist then Nothing
                   else Just (loc, expected_dist, locDist)
                
+checkGrids :: G s -> ST s [[(Coord, Distance, Distance)]]
 checkGrids gg  =
   do let maxCoords = gMaxbound gg
          occG  = gOcc gg
          grids = zip (elems $ gDists gg) (elems $ gSinks gg)
          checkGrid (distG, sink) = do
-           assocs <- getAssocs distG 
+           assocs' <- getAssocs distG 
            catMaybes <$> mapM (\(loc,_) -> 
-                           checkDistance maxCoords occG distG sink loc) assocs
-     mapMaybe (\error -> if null error then Nothing else Just error)
+                           checkDistance maxCoords occG distG sink loc) assocs'
+     mapMaybe (\error' -> if null error' then Nothing else Just error')
        <$> mapM checkGrid grids    
      
      -- | Test with one sink and cary out various changes recalculating each time. 
 testGen2 :: ST s (G s)
 testGen2 =   do gg <- initG (4,4) [(2,2)]
                 let chLoc filled coord = do changeLoc gg filled coord
-                                            errors <- checkGrids gg
+                                            errors' <- checkGrids gg
                                             -- unsafeIOToST (print errors) 
-                                            unsafeIOToST $ assertEmpty errors
+                                            unsafeIOToST $ assertEmpty errors'
                                             return ()   
-                    distG = gDists gg ! 0
                 mapM_ (chLoc True) [(1,1),(2,1),(3,1),(1,3),(2,3),(3,3)]
                 mapM_ (chLoc True) [(1,2),(3,2)]
                 mapM_ (chLoc False) [(3,2)]

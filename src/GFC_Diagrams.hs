@@ -1,11 +1,12 @@
-module GFC_Diagrams where
+module GFC_Diagrams( main, genOutput) where
 
 import Diagrams.Prelude
 import Diagrams.Backend.SVG
 import Diagrams.Backend.SVG.CmdLine
 import Text.Blaze.Svg.Renderer.Utf8
 
-import FindFlowCover
+import FindTrails (Grid(..), EPTrail(EndPoints))
+import FindFlowCover 
 
 -- plotCenter :: (Int,Int) -> (Int,Int) -> (Double,Double)
 
@@ -33,17 +34,17 @@ plotTrails size trails = (trailD `atop` borderD size) # centerXY # pad 1.1
 testOutputD :: Grid -> QDiagram SVG R2 Any
 testOutputD grid = plotTrails (gSize grid) (trailGrid grid)
         
-genOuput :: Grid -> IO ()
-genOuput test = defaultMain (testOutputD test)
+genOutput :: Grid -> IO ()
+genOutput test = defaultMain (testOutputD test)
 
 --testGrid9 = Grid (8,8) [EndPoints (2,0) (3,0), EndPoints (4,0) (5,0), EndPoints (1,0) (6,0),EndPoints (0,0) (7,0) ]
 testGrid9a = Grid (8,8) [EndPoints (1,0) (6,0), EndPoints (2,1) (3,1), EndPoints (0,0) (7,0), EndPoints (4,1) (5,1) ]
-testGrid12 = Grid (8,8) [EndPoints (2,0) (3,2), EndPoints (4,4) (5,5), EndPoints (1,3) (6,7),EndPoints (0,0) (7,0) ]
+testGrid12a = Grid (8,8) [EndPoints (2,0) (3,2), EndPoints (4,4) (5,5), EndPoints (1,3) (6,7),EndPoints (0,0) (7,0) ]
 
 -- out1 = renderSvg $ renderDia SVG (SVGOptions (Dims 200 200) Nothing) (testOutputD testGrid1)        
 
 --main :: IO () 
-main = genOuput testGrid9a
+main = genOutput testGrid9a
 main1 = defaultMain (plotTrails (8,8) [map fst 
           [((4,4),0),((4,5),3),((3,5),2),((3,4),2),((3,3),1),((4,3),1),((5,3),1),((6,3),2),((6,2),2),((6,1),3),((5,1),0),((5,2),3),((4,2),2),((4,1),2),((4,0),1),((5,0),1),((6,0),1),((7,0),0),((7,1),0),((7,2),0),((7,3),0),((7,4),0),((7,5),0),((7,6),0),((7,7),3),((6,7),3),((5,7),3),((4,7),3),((3,7),3),((2,7),3),((1,7),3),((0,7),2),((0,6),1),((1,6),2),((1,5),3),((0,5),2),((0,4),2),((0,3),2),((0,2),1),((1,2),0),((1,3),0),((1,4),1)]
           ])

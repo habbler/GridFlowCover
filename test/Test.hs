@@ -1,6 +1,7 @@
 module Test where
 
-import FindFlowCover
+import FindTrails (Grid(..), EPTrail(EndPoints))
+-- import FindFlowCover 
 import GFC_Diagrams
 
 testGrid = Grid (2,2) [EndPoints (0,0) (0,1) ]
@@ -20,5 +21,5 @@ testGrid12 = Grid (8,8) [EndPoints (2,0) (3,1), EndPoints (4,4) (5,5)] --, EndPo
 -- out1 = renderSvg $ renderDia SVG (SVGOptions (Dims 200 200) Nothing) (testOutputD testGrid1)        
 
 --main :: IO () 
-main = genOuput testGrid12 
+main = genOutput testGrid12  
 -- :main -o test.svg -w 400

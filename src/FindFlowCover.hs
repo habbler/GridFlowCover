@@ -1,8 +1,13 @@
 module FindFlowCover where
 
+import Control.Monad.ST
+import Data.Array.MArray (getElems)
+
+import Grid (initG, updateCoord, Coord)
 import FindTrails
 
--- | Solve the Grid
+
+-- | Solve the Grid used depth wise back tracking search
 testIter :: Grid -> [FTrail]
 testIter (Grid size endpoints) 
    = runST $ do gf <- createInitialGrid

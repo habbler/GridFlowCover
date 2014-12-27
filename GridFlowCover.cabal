@@ -7,18 +7,20 @@ build-type:     Simple
 cabal-version:  >=1.8
 
 library
-  exposed-modules:  
-                    Grid,
+  exposed-modules:  Grid,
                     GFC_Diagrams,
-                    FindTrails
-  build-depends:       base ==4.6.*, array ==0.4.*, vector ==0.10.*, 
-                       diagrams-core == 1.0.*, diagrams-lib ==1.0.*, diagrams-svg ==1.0.*,
-                       blaze-svg >=0.3.3 && <0.4,
-                       extra >=1.0 && <1.1
+                    FindTrails,
+                    FindFlowCover
+    
+  build-depends:    base ==4.6.*, array ==0.4.*, vector ==0.10.*, 
+                    diagrams-core == 1.0.*, diagrams-lib ==1.0.*, diagrams-svg ==1.0.*,
+                    blaze-svg >=0.3.3 && <0.4,
+                    extra >=1.0 && <1.1
+
   hs-source-dirs:   src
   extensions:       DoAndIfThenElse
   ghc-options:      -fwarn-missing-signatures
-  other-modules:    FindFlowCover
+  other-modules:    
 
 test-suite GFCTest
   type:            exitcode-stdio-1.0
