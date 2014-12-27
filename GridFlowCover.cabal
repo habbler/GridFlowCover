@@ -8,9 +8,9 @@ cabal-version:  >=1.8
 
 library
   exposed-modules:  Grid,
-                    GFC_Diagrams,
                     FindTrails,
-                    FindFlowCover
+                    FindFlowCover,   
+                    GFC_Diagrams
     
   build-depends:    base ==4.6.*, array ==0.4.*, vector ==0.10.*, 
                     diagrams-core == 1.0.*, diagrams-lib ==1.0.*, diagrams-svg ==1.0.*,

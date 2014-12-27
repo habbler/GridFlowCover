@@ -3,17 +3,28 @@ module FindFlowCover where
 import Control.Monad.ST
 import Data.Array.MArray (getElems)
 
-import Grid (initG, updateCoord, Coord)
+import Grid (initG, updateCoord, Coord, Direction)
 import FindTrails
 
 
 -- | Solve the Grid used depth wise back tracking search
-testIter :: Grid -> [FTrail]
-testIter (Grid size endpoints) = runST $ do
+searchForTrails :: Grid -> [FTrail]
+searchForTrails (Grid size endpoints) = runST $ do
         -- Note that we can't set the sources to blocked in the current design,
         -- as we need distances to be calculated for the sources, as reachability
         -- is defined as the distance not being infinity.
         -- This means that we need to exclude sources as being an empty square during the search...  
+    gf <- initG (maxCoords size) (map epSink endpoints)
+    result <- solveGrid1 gf (zip endpoints [0,1..])
+                -- Success continuation 
+                (\grid route -> return $ SFinished [route]) 
+    case result of 
+      SFinished trail -> return trail
+      SNext -> error "No solution exists"
+
+-- | Solve the Grid used depth wise back tracking search
+searchForCover :: Grid -> [FTrail]
+searchForCover (Grid size endpoints) = runST $ do
     gf <- initG maxBound (map epSink endpoints)
     -- grid <- initBoolG maxBound False
     result <- solveGrid1 gf (zip endpoints [0,1..])
@@ -38,11 +49,14 @@ testIter (Grid size endpoints) = runST $ do
   where maxBound = maxCoords size
 
 -- | Solve the grid and return solutions as coordinates                           
-traceTrail :: Grid -> [[Coord]]                          
-traceTrail grid = map (\trail -> scanl updateCoord (fst $ head trail) $ map snd trail)
-                      $ testIter grid 
+--traceTrail :: Grid -> [[Coord]]                          
+traceTrail :: [FTrail] -> [[Coord]]
+traceTrail = map (\trail -> scanl updateCoord (fst $ head trail) $ map snd trail)
 
-trailGrid :: Grid -> [[Coord]]
-trailGrid = traceTrail
+trailFind :: Grid -> [[Coord]]
+trailFind = traceTrail . searchForTrails
+                       
+trailCover :: Grid -> [[Coord]]
+trailCover = traceTrail . searchForCover
 
  

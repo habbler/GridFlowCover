@@ -3,6 +3,26 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 module FindTrails where
+{--
+Do those points close together last?
+Handle different types of dead-end differently?
+Those trails that are next to empty squares can be recomputed! 
+Definitely makes sense then to do cover in a second phase where we recompute trails next to
+empty squares.
+If a trail takes a long time to find we can try searching for that trail first.
+Try finding trails in different orders.
+Is there some way we could handle the trails somewhat independently?
+Have a function that takes a trail as input, and finds the next trail.
+The easiest would be for the first half, we include the remaining choices as well.
+Calculating the next possible trail is then trivial. For speed we will probably want to use
+a sequence so we can access the split point quickly.
+Do different variants in parallel.
+Probabilistic search? Do all trails in parallel. Give priority to trails that didn't finish?
+How to time out?
+Treat each trail as a gene.
+Does the final trail try and fill all space?
+If there is some space, chop out a section of nearby trail and recompute that.
+--}
 
 import Control.Monad
 import Control.Monad.ST
@@ -121,7 +141,8 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
         snextIsolated = snextUnless "Isolated: "
         snextUnreachable = snextUnless "Sink unreachable." (Nothing :: Maybe ())
         -- Sort by reverse distance for the final color. i.e. aim for coverage
-        comparison = if null laterEps then comparing $ Down . snd else comparing snd    
+        comparison = if null laterEps then comparing $ Down . snd else comparing snd
+        comparison1 = comparing $ snd   
         sortByDistance locs = map fst <$> sortBy comparison
                                  <$> mapM (\p@(loc,direction) -> (p,) <$> readArray dists loc) locs      
 
