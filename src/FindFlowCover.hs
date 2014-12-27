@@ -38,20 +38,6 @@ type FTrail = [(Coord, Direction)]
 
 data Search a = SNext | SFinished a deriving Show
 
-handleSNext :: (Monad m, Show t) => m (Search t) -> m (Search t) -> m (Search t)
-handleSNext mv f = do v <- mv
-                      case v of
-                        SNext -> do v <- f
-                                    trace ("Called: " ++ (show v)) f
-                        _ -> mv 
-
-handleSFinished :: Monad m => m (Search t) -> (t -> t) ->  m (Search t)
-handleSFinished mv f = do v <- mv
-                          case v of
-                            SFinished r -> return $ SFinished (f r)
-                            _ -> mv 
-
-
 type SFTrail = Search FTrail
 
 -- | Check that for color there is a route from the source to the sink
@@ -103,16 +89,8 @@ solveIter gf endPoints@((trail,trailC):laterEps) cont
                            -- try each of the neighbours in turn in order to find a route to the sink                                  
                            else do freeN2  <- singular freeN3
                                    case freeN2 of
-                                         [(newPos1,direction1)] -> -- trace (show freeN2)
---                                            searchFold (toFront freeN2 freeN3) (\(newPos, direction) -> 
---                                               loop (newPos, route ++ [(pos, direction)]) ) 
-                                             loop (newPos1, route ++ [(pos, direction1)])
---                                                case v of
---                                                     SNext -> (searchFold (freeN3 \\ freeN2) (\(newPos, direction) -> 
---                                                                 loop (newPos, route ++ [(pos, direction)])))
---                                                     _ -> return v             
---                                                      `handleSFinished`
---                                                      (\r -> trace ("After singular" ++ (show freeN2)) r))              
+                                         [(newPos1,direction1)] -> 
+                                                loop (newPos1, route ++ [(pos, direction1)])
                                          []  -> do freeN4 <- sortByDistance freeN3
                                                    searchFold freeN4 (\(newPos, direction) -> 
                                                      loop (newPos, route ++ [(pos, direction)])) 
@@ -134,7 +112,9 @@ solveIter gf endPoints@((trail,trailC):laterEps) cont
         snextUnless cond reason body = ifM cond body $ return $! trace reason SNext
         snextIsolated msgCounter cond var body 
              = ifM cond body $ tracePer 1000 msgCounter ("Isolated: " ++ show var) SNext
-        sortByDistance locs = map fst <$> sortBy (comparing snd) 
+        -- TODO: sort by reverse distance for the final color. i.e. aim for coverage
+        comparison = if null laterEps then comparing $ Down . snd else comparing snd    
+        sortByDistance locs = map fst <$> sortBy comparison
                                  <$> mapM (\p@(loc,direction) -> (p,) <$> readArray dists loc) locs      
 
 -- Note that the current square has already been filled, and singular checks for empty neighbours.
@@ -157,13 +137,24 @@ tracePer every msgCounter msg value =
 
 -- | For each color find a route, search by backtracking (SNext triggers backtracking)
 solveGrid1 :: G s -> [(EPTrail, TrColor)] -> ST s (Search [FTrail])
-solveGrid1 gf eps@(_:ePoints) -- solveIter does the first trail, the continuation the rest
-   =   do msgCounter <- newSTRef 0 
+solveGrid1 gf eps@(_:ePoints)
+   =   do msgCounter <- newSTRef 0
+          -- solveIter does the first trail, the continuation the rest 
           solveIter gf eps (\grid route -> 
-            if null ePoints then do 
+            if null ePoints then do
+                 -- Here we are at the bottom of the recursion. We only have the route
+                 -- of the last color.
+                 -- Check whether we have a complete cover. 
                  elems <- getElems grid
-                 if and elems then return $ SFinished [route] 
-                 else tracePer 10 msgCounter "Missed" SNext 
+                 let unCovCount = length $ filter not elems
+                 -- I am guessing it is the case that if there is a solution with
+                 -- exactly one square uncovered, then there is no solution with 
+                 -- all squares covered.
+                 if unCovCount < 2  then return $ SFinished [route]
+                 -- In this case we would like to show all the routes to see how
+                 -- close we got, but not too often. How to do that?
+                 -- Would need to accumulate the routes. 
+                 else return SNext 
             else do res <- solveGrid1 gf ePoints
                     return $! case res of  
                                  (SFinished routes) -> SFinished (route:routes)
