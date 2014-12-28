@@ -44,7 +44,7 @@ import Control.Monad.Extra (ifM)
 -- | The end-points of a trail
 data EPTrail = EndPoints { epSource :: Coord
                          , epSink  :: Coord 
-                         } deriving Show
+                         } deriving (Eq, Show)
 
 -- | The problem setup. A particular size and sources and sinks
 data Grid = Grid { gSize :: (Int,Int)
@@ -56,19 +56,21 @@ maxCoords (xS,yS) = (xS - 1, yS - 1)
 
 type FTrail = [(Coord, Direction)] 
 
-data Search a = SNext | SFinished a deriving Show
+data Search a = SNext | SFinished a | SAbortTrail (EPTrail, TrColor) deriving Show
 
 type SFTrail = Search FTrail
 
 -- | Check that for color there is a route from the source to the sink
-srcReachable ::  G s -> (EPTrail, Int) -> ST s Bool
+srcReachable ::  G s -> (EPTrail, TrColor) -> ST s Bool
 srcReachable gg (endpoints, color) = let distG = gDists gg ! color in do
                                        dist <- readArray distG (epSource endpoints)
                                        return $! dist /= infDist
                                        
--- | Check at all locations are reachable from at least one sink
-srcsReachable :: G s -> [(EPTrail, Int)] -> ST s Bool
-srcsReachable gg locs = and <$> mapM (srcReachable gg) locs
+-- | Find the first location of loc, from which a sink can't be reached
+srcsReachable :: G s -> [(EPTrail, TrColor)] -> ST s (Maybe (EPTrail, TrColor))
+srcsReachable gg locs = fmap snd . find (not . fst) <$> 
+         mapM (\loc -> do r <- srcReachable gg loc
+                          return (r,loc)) locs
 
 -- | Fill loc for the duration of body.
 withOcc :: G s -> Coord -> ST s (Search t) -> ST s (Search t)
@@ -76,8 +78,8 @@ withOcc gf loc body    =  do changeLoc gf True loc
                              res <- body
                              case res of
                                SFinished _ -> return res
-                               SNext -> do changeLoc gf False loc
-                                           return res
+                               otherwise -> do changeLoc gf False loc
+                                               return res            
 
 -- | Execute body for each location until body returns SFinished
 searchFold :: (Monad m) => [a] -> (a -> m (Search b)) -> m (Search b)
@@ -85,8 +87,8 @@ searchFold [] _ = return SNext
 searchFold (loc:n2Rest) body =
   do res <- body loc
      case res of
-       SFinished _ -> return res
-       otherwise -> searchFold n2Rest body
+       SNext -> searchFold n2Rest body
+       otherwise -> return res
 
 -- | On success this function is called with the solved trail. 
 -- | By returning SNext the function can request backtracking to find an alternate trail.
@@ -106,7 +108,7 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
              loop (pos, route)
                = if pos == sink then onSuccess blocked route -- trail finished. continue.
                  else withOcc gf pos $ -- trace (show res) $ return res
-               -- do all unsolved sources have a possible route to a sink
+                   -- do all unsolved sources have a possible route to a sink
                    snextUnreachable msgCounter (srcsReachable gf laterEps) $ do
                        freeN1 <- freeN blocked pos -- get the free neighbours
                        -- Check that from each free neighbour a sink is reachable
@@ -139,7 +141,13 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
         snextUnless reason var msgCounter cond body 
             = ifM cond body $ tracePer 1000 msgCounter (reason ++ maybe "" show var ) SNext
         snextIsolated = snextUnless "Isolated: "
-        snextUnreachable = snextUnless "Sink unreachable." (Nothing :: Maybe ())
+        snextUnreachable msgCounter cond body = do
+           c <- cond
+           case c of
+              Nothing -> body
+              Just ep -> do count <- readSTRef msgCounter
+                            if count < 100000000 then tracePer 1000 msgCounter "Sink unreachable." SNext
+                            else return $! trace ("Sink unreachable." ++ show ep) $ SAbortTrail ep
         -- Sort by reverse distance for the final color. i.e. aim for coverage
         comparison = if null laterEps then comparing $ Down . snd else comparing snd
         comparison1 = comparing $ snd   
@@ -167,14 +175,17 @@ tracePer every msgCounter msg value =
 -- | For each color find a route, search by backtracking (SNext triggers backtracking)
 solveGrid1 :: G s -> [(EPTrail, TrColor)] -> SearchCont s -> ST s (Search [FTrail])
 solveGrid1 gf endPoints onSuccess
-   =   do msgCounter <- newSTRef 0
-          -- solveIter does the first trail, the continuation the rest 
-          let loop eps@(_:ePoints) 
-               = solveIter gf eps (\grid route -> 
-                    if null ePoints then do onSuccess grid route
-                    else do res <- loop ePoints
-                            return $! case res of  
-                                         SFinished routes -> SFinished (route:routes)
-                                         SNext -> SNext )
-          loop endPoints                           
+   = do msgCounter <- newSTRef 0
+        -- solveIter does the first trail, the continuation the rest 
+        let loop eps@(_:ePoints) =
+              solveIter gf eps (\grid route -> 
+                  if null ePoints then onSuccess grid route
+                  else do res <- loop ePoints
+                          case res of  
+                             SFinished routes -> return $ SFinished (route:routes)
+                             SNext -> return SNext
+                             SAbortTrail epToFront -> trace ("Moved to front: " ++ show epToFront)
+                                                         loop (epToFront:(delete epToFront eps))
+                  )           
+        loop endPoints                           
                                 
