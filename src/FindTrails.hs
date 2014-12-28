@@ -106,7 +106,11 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
              colors = trailC : map snd laterEps
              allReachable locs = and <$> mapM (reachability gf colors . fst) locs
              loop (pos, route)
-               = if pos == sink then onSuccess blocked route -- trail finished. continue.
+               = if pos == sink then do
+                   -- Need to make sure there are no unreachable squares next to the sink
+                   singS <- singularTail =<< freeN blocked pos 
+                   if null singS then onSuccess blocked route -- trail finished. continue.
+                   else return SNext
                  else withOcc gf pos $ -- trace (show res) $ return res
                    -- do all unsolved sources have a possible route to a sink
                    snextUnreachable msgCounter (srcsReachable gf laterEps) $ do
@@ -116,19 +120,23 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
                            freeN3 <- (maybeAddSink pos) <$> filterM leadsToSink freeN1
                            if null freeN3 then trace "Stalled" $ return SNext
                            -- try each of the neighbours in turn in order to find a route to the sink                                  
-                           else do freeN2  <- singular freeN3
+                           else do freeN2  <- singular freeN1 
                                    case freeN2 of
-                                         [(newPos1,direction1)] -> 
-                                                loop (newPos1, route ++ [(pos, direction1)])
+                                         [(newPos1,direction1)] ->
+                                                -- we will stall out if freeN2 does not belong to freeN3
+                                                ifM (reachability gf [trailC] newPos1) 
+                                                    (loop (newPos1, route ++ [(pos, direction1)]))
+                                                    (return SNext)
                                          []  -> do freeN4 <- sortByDistance freeN3
                                                    searchFold freeN4 (\(newPos, direction) -> 
                                                      loop (newPos, route ++ [(pos, direction)])) 
-                                         others -> tracePer 1000 msgCounter "Singulars" SNext
+                                         others -> tracePer 1000 msgCounter "Singulars" SNext                                        
          loop (epSource trail,  [])
   where maxCoord = gMaxbound gf
         blocked = gOcc gf
-        sources = map (epSource . fst) endPoints 
-        sinks = gSinks gf
+        mapEndPoints f = map (f . fst) endPoints
+        sources = mapEndPoints epSource 
+        sinks = mapEndPoints epSink
         dists = (gDists gf)!trailC
         emptyBoard :: ST s (OCCG s)
         emptyBoard = newArray ((0,0),maxCoord) False
@@ -137,7 +145,8 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
         maybeAddSink pos locs = case neighbourD sink pos of
                                             Just dir -> (sink,dir):locs
                                             Nothing -> locs
-        singular = singularNeighbours maxCoord blocked sources sinks                                    
+        singular = singularNeighbours maxCoord blocked (sinks ++ sources)
+        singularTail = singularNeighbours maxCoord blocked (tail sinks ++ tail sources)                                     
         snextUnless reason var msgCounter cond body 
             = ifM cond body $ tracePer 1000 msgCounter (reason ++ maybe "" show var ) SNext
         snextIsolated = snextUnless "Isolated: "
@@ -150,7 +159,6 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
                             else return $! trace ("Sink unreachable." ++ show ep) $ SAbortTrail ep
         -- Sort by reverse distance for the final color. i.e. aim for coverage
         comparison = if null laterEps then comparing $ Down . snd else comparing snd
-        comparison1 = comparing $ snd   
         sortByDistance locs = map fst <$> sortBy comparison
                                  <$> mapM (\p@(loc,direction) -> (p,) <$> readArray dists loc) locs      
 

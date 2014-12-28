@@ -228,13 +228,12 @@ reachability gg colors loc = anyM check colors
                            
 -- | Locations with 0 or 1 ways in or out of them (note that the current trail head
 -- 
-singularNeighbours :: MaxCoords -> OCCG s -> [Coord] -> Sinks -> [(Coord, t)] -> ST s [(Coord, t)]
-singularNeighbours maxCoords occG sources sinks neighb 
+singularNeighbours :: MaxCoords -> OCCG s -> [Coord] -> [(Coord, t)] -> ST s [(Coord, t)]
+singularNeighbours maxCoords occG endPoints neighb 
   = liftM catMaybes $ mapM (\nb@(nbC,_) ->  do nCnt <- countFreeNeighbours maxCoords occG nbC
                                                return $!if nCnt > 1 then Nothing
                                                         else if nCnt == 0 then Just nb
-                                                        else if anyNeighbourOf (elems sinks) nbC then Nothing
-                                                        else if anyNeighbourOf sources nbC then Nothing
+                                                        else if anyNeighbourOf endPoints nbC then Nothing
                                                         else Just nb 
                                             ) neighb
 
