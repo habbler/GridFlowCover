@@ -1,4 +1,4 @@
-module GFC_Diagrams( main, genOutput) where
+module GFC_Diagrams( genOutput) where
 
 import Diagrams.Prelude
 import Diagrams.Backend.SVG
@@ -53,7 +53,7 @@ testGrid13 = Grid (8,8) $ reverse [EndPoints (0,2) (7,3), EndPoints (5,0) (5,6)]
 -- out1 = renderSvg $ renderDia SVG (SVGOptions (Dims 200 200) Nothing) (testOutputD testGrid1)        
 
 main :: IO () 
-main = genOutputF testGrid12a
+main = genOutputF testGrid9a
 main1 = defaultMain (plotTrails (8,8) [map fst 
           [((4,4),0),((4,5),3),((3,5),2),((3,4),2),((3,3),1),((4,3),1),((5,3),1),((6,3),2),((6,2),2),((6,1),3),((5,1),0),((5,2),3),((4,2),2),((4,1),2),((4,0),1),((5,0),1),((6,0),1),((7,0),0),((7,1),0),((7,2),0),((7,3),0),((7,4),0),((7,5),0),((7,6),0),((7,7),3),((6,7),3),((5,7),3),((4,7),3),((3,7),3),((2,7),3),((1,7),3),((0,7),2),((0,6),1),((1,6),2),((1,5),3),((0,5),2),((0,4),2),((0,3),2),((0,2),1),((1,2),0),((1,3),0),((1,4),1)]
           ])
