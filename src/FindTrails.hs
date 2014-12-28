@@ -33,7 +33,7 @@ import Data.Array.Unboxed
 import Data.Maybe
 import Data.List
 import Data.Ord
-import qualified Data.Vector as V
+-- import qualified Data.Vector as V
 -- import System.Random.MWC
 import Debug.Trace 
 

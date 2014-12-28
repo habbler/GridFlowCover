@@ -1,4 +1,4 @@
-module GFC_Diagrams( genOutput) where
+module GFC_Diagrams( genOutput, genOutputF) where
 
 import Diagrams.Prelude
 import Diagrams.Backend.SVG
