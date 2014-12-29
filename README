@@ -1,0 +1,22 @@
+Solve the puzzle/game "Flow Colors" (known under other names as: "Free Flow", "Flow Free").
+(These names may be trademarked by their various owners).
+
+The library solves by doing depth first search with back tracking.
+Each trail is solved one after the other based on the order that the end points are
+specified. Giving the trails in a good order may improve the solving speed.
+
+Various techniques are used for choosing a good search order, and pruning out 
+branches that won't lead to a solution.
+
+Performance is satisfactory.
+
+Currently the problem must be specified in coding. The command line could be 
+easily extended to support reading the problem specification.
+
+The output is a SVG file showing the solution.
+
+Function GFC_Diagrams.genOutputF searches for a solution without perfect cover
+(however all trails must be complete). It is faster than genOutput which backtracks
+until it finds  a solution with either perfect cover, or with one square not
+covered. 
+ 
