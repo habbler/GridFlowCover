@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, BangPatterns #-}
 module Grid where
 
 import Control.Applicative
@@ -71,7 +71,7 @@ anyNeighbourOf cs coord = any (isNeighbourOf coord) cs
                                     
 {-# inline neighbours #-}
 -- | Apply function f to the neighbours of r0 taking into account the boundaries                                    
-neighbours :: (Monad m) => r0 -> (Coord -> Direction -> r0 -> m r0) -> MaxCoords -> Coord -> m r0
+neighbours :: r0 -> (Coord -> Direction -> r0 -> ST s r0) -> MaxCoords -> Coord -> ST s r0
 neighbours r0 f (bX,bY) (x,y) 
   = do r1 <- ifm (y < bY) (x,y+1) 0  r0
        r2 <- ifm (x < bX) (x+1,y) 1  r1
@@ -84,8 +84,8 @@ neighbours r0 f (bX,bY) (x,y)
 -- | Return the neighbours where occG is false
 falseNeighbours ::  MaxCoords -> OCCG s -> Coord -> ST s [Coord]
 falseNeighbours maxCoords occG (x,y) = neighbours [] ifm maxCoords (x,y) 
-  where ifm l d r = do occ <- readArray occG l
-                       if occ then return r else return $! l:r
+  where ifm l d !r = do occ <- readArray occG l
+                        return $! if occ then r else l:r
 
 -- | Return the neighbours where occG is false, plus the direction to them                        
 freeNeighbours ::  MaxCoords -> OCCG s -> Coord -> ST s [(Coord, Direction)]
@@ -117,7 +117,7 @@ initDistG maxCoords = newArray ((0,0), maxCoords)
 -- | call function f repeatedly on its own output list, until that is empty           
 processLayersM_ :: Monad m => ([t] -> m [t]) -> [t] -> m ()
 processLayersM_ f [] = return()       
-processLayersM_ f l = f l >>= processLayersM_ f
+processLayersM_ f !l = f l >>= processLayersM_ f
 
 copyArray :: (Ix i, MArray a e m) => a i e -> m (a i e)
 copyArray = mapArray id
@@ -130,7 +130,7 @@ updateDists maxCoords occG distG lastChanged
                             return $! dist /= infDist
            -- set a location to infinity and returns the neigbours that need changing
            -- these come in two types, those which we set to infinity, and the others.                 
-           fSetInf (accumMins, accumInf) loc  =
+           fSetInf (!accumMins, !accumInf) loc  =
              do locDist  <- readArray distG loc
                 -- already processed, move on.
                 if locDist == infDist then return (accumMins, accumInf)
@@ -151,7 +151,7 @@ updateDists maxCoords occG distG lastChanged
            -- recursively calculate distances. First the neighbours, then the neighbours of those, etc.
            fDistances [] [] = return ()
            fDistances calcMins [] = processLayersM_ fCalcMin calcMins
-           fDistances calcMins setInf =
+           fDistances !calcMins !setInf =
               do newMins1 <- fCalcMin calcMins
                  (newMins2, newInfs) <- foldM fSetInf ([],[]) setInf 
                  fDistances (newMins1 ++ newMins2) newInfs
@@ -170,22 +170,18 @@ updateDists maxCoords occG distG lastChanged
 -- | Given a list of locations coords, updates all of them to +1 of the lowest of its neighbours
 -- | and returns a new set of locations that need updating
 fCalcMinW :: (Int, Int) -> DistG s -> OCCG s -> [Coord] -> ST s [Coord]
-fCalcMinW maxCoords distG doneG coords  = foldM fCalcMin [] coords 
-  where fCalcMin accumsMins loc =
+fCalcMinW maxCoords distG doneG  = foldM fCalcMin [] 
+  where fCalcMin !accumsMins loc =
              do locDist <- readArray distG loc
                 minN_dist <- minNeighbours maxCoords distG loc
                 writeArray doneG loc True
-                -- need to ensure minN_dist is nevery infinity !!!
-                let newDist = minN_dist + 1
-                if locDist /= minN_dist then
+                -- Adding 1 to infinity can make it role over
+                let !newDist = max minN_dist $ minN_dist + 1
+                if locDist /= newDist then
                   do writeArray distG loc newDist
                      neighbours <- falseNeighbours maxCoords doneG loc
-                     return (accumsMins ++ neighbours)
+                     return $! accumsMins ++ neighbours
                 else return accumsMins
-                
-                
-                
-
        
 -- | Returns a distance array give a array of blocked positions and a destination sinkLoc                   
 initDist  :: MaxCoords -> OCCG s -> Coord -> ST s (DistG s)
@@ -193,7 +189,8 @@ initDist maxCoords occG sinkLoc
   = do distG <- initDistG maxCoords infDist
        writeArray distG sinkLoc 0
        doneG <- copyArray occG
-       processLayersM_ (fCalcMinW  maxCoords distG doneG)  [sinkLoc] 
+       neighbours <- falseNeighbours maxCoords doneG sinkLoc
+       processLayersM_ (fCalcMinW  maxCoords distG doneG) neighbours 
        return distG
        
 -- | Given a list of sinks return the structure of distance arrays. All other squares are empty

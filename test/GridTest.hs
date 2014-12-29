@@ -44,11 +44,12 @@ checkGrids gg  =
      -- | Test with one sink and cary out various changes recalculating each time. 
 testGen2 :: ST s (G s)
 testGen2 =   do gg <- initG (4,4) [(2,2)]
-                let chLoc filled coord = do changeLoc gg filled coord
-                                            errors' <- checkGrids gg
-                                            -- unsafeIOToST (print errors) 
-                                            unsafeIOToST $ assertEmpty errors'
-                                            return ()   
+                let chLoc filled coord = do 
+                      changeLoc gg filled coord
+                      errors' <- checkGrids gg
+                      unsafeIOToST (print errors')
+                      unsafeIOToST $ assertEmpty errors'
+                      return ()   
                 mapM_ (chLoc True) [(1,1),(2,1),(3,1),(1,3),(2,3),(3,3)]
                 mapM_ (chLoc True) [(1,2),(3,2)]
                 mapM_ (chLoc False) [(3,2)]
@@ -65,3 +66,21 @@ testDist =  printArr testDist2
 test_1 :: IO ()
 test_1 = do a <- return testDist2 
             seq a return ()
+
+testGen2a :: ST s (G s)
+testGen2a =  do gg <- initG (4,4) [(2,2)]
+                let chLoc filled coord = do 
+                      changeLoc gg filled coord
+                      errors' <- checkGrids gg
+                      unsafeIOToST (print errors')
+                      -- unsafeIOToST $ assertEmpty errors'
+                      return ()   
+                -- mapM_ (chLoc True) [(1,1)] --,(2,1),(3,1),(1,3),(2,3),(3,3)]
+                -- mapM_ (chLoc True) [(1,2),(3,2)]
+                -- mapM_ (chLoc False) [(3,2)]
+                return gg
+testDist2a =  runSTUArray $ do gg <- testGen2a
+                               return $ (gDists gg)!0
+testDista :: IO ()
+testDista =  printArr testDist2a                                  
+            
