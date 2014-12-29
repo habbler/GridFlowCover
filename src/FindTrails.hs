@@ -130,7 +130,7 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
                                          []  -> do freeN4 <- sortByDistance freeN3
                                                    searchFold freeN4 (\(newPos, direction) -> 
                                                      loop (newPos, route ++ [(pos, direction)])) 
-                                         others -> tracePer 1000 msgCounter "Singulars" SNext                                        
+                                         others -> tracePer 10000 msgCounter "Singulars" SNext                                        
          loop (epSource trail,  [])
   where maxCoord = gMaxbound gf
         blocked = gOcc gf
@@ -148,14 +148,14 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
         singular = singularNeighbours maxCoord blocked (sinks ++ sources)
         singularTail = singularNeighbours maxCoord blocked (tail sinks ++ tail sources)                                     
         snextUnless reason var msgCounter cond body 
-            = ifM cond body $ tracePer 1000 msgCounter (reason ++ maybe "" show var ) SNext
+            = ifM cond body $ tracePer 10000 msgCounter (reason ++ maybe "" show var ) SNext
         snextIsolated = snextUnless "Isolated: "
         snextUnreachable msgCounter cond body = do
            c <- cond
            case c of
               Nothing -> body
               Just ep -> do count <- readSTRef msgCounter
-                            if count < 100000000 then tracePer 1000 msgCounter "Sink unreachable." SNext
+                            if count < 1000000 then tracePer 10000 msgCounter "Sink unreachable." SNext
                             else return $! trace ("Sink unreachable." ++ show ep) $ SAbortTrail ep
         -- Sort by reverse distance for the final color. i.e. aim for coverage
         comparison = if null laterEps then comparing $ Down . snd else comparing snd

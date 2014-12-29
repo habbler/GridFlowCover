@@ -40,7 +40,7 @@ executable GridFlowCoverSVG
                    base >= 4,
                    GridFlowCover
   hs-source-dirs:  main
-  ghc-options:     -Wall -prof -fprof-auto -rtsopts
+  ghc-options:     -Wall -rtsopts
   main-is:         Main.hs
   other-modules:  
 
