@@ -105,8 +105,9 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
          let leadsToSink (loc,_) = reachability gf [trailC] loc
              colors = trailC : map snd laterEps
              allReachable locs = and <$> mapM (reachability gf colors . fst) locs
-             loop (pos, route)
-               = if pos == sink then do
+             loop pos direction route
+               = let callLoop newPos newDir = loop newPos (Just newDir) $ route ++ [(pos, newDir)] in
+                 if pos == sink then do
                    -- Need to make sure there are no unreachable squares next to the sink
                    singS <- singularTail =<< freeN blocked pos 
                    if null singS then onSuccess blocked route -- trail finished. continue.
@@ -122,16 +123,15 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
                            -- try each of the neighbours in turn in order to find a route to the sink                                  
                            else do freeN2  <- singular freeN1 
                                    case freeN2 of
-                                         [(newPos1,direction1)] ->
+                                         [(newPos,newDir)] ->
                                                 -- we will stall out if freeN2 does not belong to freeN3
-                                                ifM (reachability gf [trailC] newPos1) 
-                                                    (loop (newPos1, route ++ [(pos, direction1)]))
+                                                ifM (reachability gf [trailC] newPos) 
+                                                    (callLoop newPos newDir)
                                                     (return SNext)
-                                         []  -> do freeN4 <- sortByDistance freeN3
-                                                   searchFold freeN4 (\(newPos, direction) -> 
-                                                     loop (newPos, route ++ [(pos, direction)])) 
+                                         []  -> do freeN4 <- favorSameDirection direction <$> sortByDistance freeN3
+                                                   searchFold freeN4 (\(newPos, newDir) -> callLoop newPos newDir) 
                                          others -> tracePer 10000 msgCounter "Singulars" SNext                                        
-         loop (epSource trail,  [])
+         loop (epSource trail) Nothing []
   where maxCoord = gMaxbound gf
         blocked = gOcc gf
         mapEndPoints f = map (f . fst) endPoints
@@ -160,7 +160,10 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
         -- Sort by reverse distance for the final color. i.e. aim for coverage
         comparison = if null laterEps then comparing $ Down . snd else comparing snd
         sortByDistance locs = map fst <$> sortBy comparison
-                                 <$> mapM (\p@(loc,direction) -> (p,) <$> readArray dists loc) locs      
+                                 <$> mapM (\p@(loc,direction) -> (p,) <$> readArray dists loc) locs
+        favorSameDirection direction locs = maybe locs 
+             (\direction1 -> maybe locs (\loc -> loc:(delete loc locs)) 
+                                 $ find (\(_,dir) -> dir == direction1) locs) direction 
 
 -- Note that the current square has already been filled, and singular checks for empty neighbours.
 -- The sink is also filled. Singular returns in the case of zero or one free neighbour.
