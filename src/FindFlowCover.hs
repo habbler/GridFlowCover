@@ -10,10 +10,6 @@ import FindTrails
 -- | Solve the Grid used depth wise back tracking search
 searchForTrails :: Grid -> [FTrail]
 searchForTrails (Grid size endpoints) = runST $ do
-        -- Note that we can't set the sources to blocked in the current design,
-        -- as we need distances to be calculated for the sources, as reachability
-        -- is defined as the distance not being infinity.
-        -- This means that we need to exclude sources as being an empty square during the search...  
     gf <- initG (maxCoords size) (map epSink endpoints)
     result <- solveGrid1 gf (zip endpoints [0,1..])
                 -- Success continuation 

@@ -102,7 +102,8 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
 -- (trail, trailC) is what we are currently finding a path for
 -- endPoints and laterEps are only used for checking reachability
     = do msgCounter <- newSTRef 0                                        
-         let leadsToSink (loc,_) = reachability gf [trailC] loc
+         let startPos = epSource trail
+             leadsToSink (loc,_) = reachability gf [trailC] loc
              colors = trailC : map snd laterEps
              allReachable locs = and <$> mapM (reachability gf colors . fst) locs
              loop pos direction route
@@ -112,6 +113,11 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
                    singS <- singularTail =<< freeN blocked pos 
                    if null singS then onSuccess blocked route -- trail finished. continue.
                    else return SNext
+                -- Note that we can't set the sources to blocked in the current design,
+                -- as we need distances to be calculated for the sources, as reachability
+                -- is defined as the distance not being infinity.
+                -- This means that we need to exclude sources as being an available square during the search                     
+                 else if pos /= startPos && (elem pos sources) then return SNext 
                  else withOcc gf pos $ -- trace (show res) $ return res
                    -- do all unsolved sources have a possible route to a sink
                    snextUnreachable msgCounter (srcsReachable gf laterEps) $ do
@@ -155,8 +161,8 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
            case c of
               Nothing -> body
               Just ep -> do count <- readSTRef msgCounter
-                            if count < 1000000 then tracePer 10000 msgCounter "Sink unreachable." SNext
-                            else return $! trace ("Sink unreachable." ++ show ep) $ SAbortTrail ep
+                            if count < 1000000 then tracePer 10000 msgCounter ("Sink unreachable." ++ show ep) SNext
+                            else return $! trace ("Sink unreachable. Aborting trail." ++ show ep) $ SAbortTrail ep
         -- Sort by reverse distance for the final color. i.e. aim for coverage
         comparison = if null laterEps then comparing $ Down . snd else comparing snd
         sortByDistance locs = map fst <$> sortBy comparison
@@ -188,15 +194,19 @@ solveGrid1 :: G s -> [(EPTrail, TrColor)] -> SearchCont s -> ST s (Search [FTrai
 solveGrid1 gf endPoints onSuccess
    = do msgCounter <- newSTRef 0
         -- solveIter does the first trail, the continuation the rest 
-        let loop eps@(_:ePoints) =
+        let bringTrailToFront epToFront ep = trace ("Moved to front: " ++ show epToFront)
+                                                         loop (epToFront:(delete epToFront ep))
+            loop eps@(_:ePoints) =
               solveIter gf eps (\grid route -> 
                   if null ePoints then onSuccess grid route
                   else do res <- loop ePoints
                           case res of  
                              SFinished routes -> return $ SFinished (route:routes)
                              SNext -> return SNext
-                             SAbortTrail epToFront -> trace ("Moved to front: " ++ show epToFront)
-                                                         loop (epToFront:(delete epToFront eps))
+                             SAbortTrail epToFront -> bringTrailToFront epToFront eps
                   )           
-        loop endPoints                           
+        result <- loop endPoints
+        case result of
+             SAbortTrail epToFront -> bringTrailToFront epToFront endPoints
+             _ -> return result                      
                                 
