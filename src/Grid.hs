@@ -125,8 +125,7 @@ copyArray = mapArray id
 -- | Update the distance array occG based on changed location lastChanged                     
 updateDists :: MaxCoords -> OCCG s -> DistG s -> Coord -> ST s ()
 updateDists maxCoords occG distG lastChanged                          
-  = do doneG <- copyArray occG
-       let notInf loc  = do dist <- readArray distG loc 
+  = do let notInf loc  = do dist <- readArray distG loc 
                             return $! dist /= infDist
            -- set a location to infinity and returns the neigbours that need changing
            -- these come in two types, those which we set to infinity, and the others.                 
@@ -147,7 +146,7 @@ updateDists maxCoords occG distG lastChanged
                                 n1 <- filterM notInf neighbours
                                 return (accumMins, accumInf ++ n1)
 
-           fCalcMin = fCalcMinW maxCoords distG doneG
+           fCalcMin = fCalcMinW maxCoords distG occG
            -- recursively calculate distances. First the neighbours, then the neighbours of those, etc.
            fDistances [] [] = return ()
            fDistances calcMins [] = processLayersM_ fCalcMin calcMins
@@ -170,16 +169,15 @@ updateDists maxCoords occG distG lastChanged
 -- | Given a list of locations coords, updates all of them to +1 of the lowest of its neighbours
 -- | and returns a new set of locations that need updating
 fCalcMinW :: (Int, Int) -> DistG s -> OCCG s -> [Coord] -> ST s [Coord]
-fCalcMinW maxCoords distG doneG  = foldM fCalcMin [] 
+fCalcMinW maxCoords distG occG  = foldM fCalcMin [] 
   where fCalcMin !accumsMins loc =
              do locDist <- readArray distG loc
                 minN_dist <- minNeighbours maxCoords distG loc
-                writeArray doneG loc True
                 -- Adding 1 to infinity can make it role over
                 let !newDist = max minN_dist $ minN_dist + 1
                 if locDist /= newDist then
                   do writeArray distG loc newDist
-                     neighbours <- falseNeighbours maxCoords doneG loc
+                     neighbours <- falseNeighbours maxCoords occG loc
                      return $! accumsMins ++ neighbours
                 else return accumsMins
        
