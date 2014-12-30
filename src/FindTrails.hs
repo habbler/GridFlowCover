@@ -54,16 +54,20 @@ data Grid = Grid { gSize :: (Int,Int)
 maxCoords :: (Num t, Num t1) => (t, t1) -> (t, t1)
 maxCoords (xS,yS) = (xS - 1, yS - 1)
 
+-- | A sequence of coordinates from a source to a sink of a colour. Includes direction information.
 type FTrail = [(Coord, Direction)] 
 
+-- | Controls search, next branch, finished, or give up on the current trail
 data Search a = SNext | SFinished a | SAbortTrail (EPTrail, TrColor) deriving Show
 
+-- | Search for a single trail
 type SFTrail = Search FTrail
 
 -- | Check that for color there is a route from the source to the sink
 srcReachable ::  G s -> (EPTrail, TrColor) -> ST s Bool
-srcReachable gg (endpoints, color) = let distG = gDists gg ! color in do
-                                       dist <- readArray distG (epSource endpoints)
+srcReachable gg (endpoints, color) = let distG = gDists gg ! color 
+                                         size = gMaxbound gg in do
+                                       dist <- minNeighbours size distG (epSource endpoints)
                                        return $! dist /= infDist
                                        
 -- | Find the first location of loc, from which a sink can't be reached
@@ -90,15 +94,19 @@ searchFold (loc:n2Rest) body =
        SNext -> searchFold n2Rest body
        otherwise -> return res
 
--- | On success this function is called with the solved trail. 
--- | By returning SNext the function can request backtracking to find an alternate trail.
--- | By returning SFinished, we proceed to the next part (which could be the final result).       
-type SearchCont s = OCCG s -> FTrail -> ST s (Search [FTrail])        
+{- | On success this function is called with the solved trail. 
+     By returning SNext the function can request backtracking to find an alternate trail.
+     By returning SFinished, we proceed to the next part (which could be the final result). -}      
+type SearchCont s = OCCG s -> FTrail -> ST s (Search [FTrail])
+
+--- Every n trace messages, give out the message
+traceEvery :: Int
+traceEvery = 10000         
 
 -- | Find a route from the source to the sink. In the case of success, call the continuation onSuccess,
--- | to carry on with the next color
-solveIter :: G s -> [(EPTrail,TrColor)] -> SearchCont s -> ST s (Search [FTrail])
-solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
+--   to carry on with the next color
+solveIter :: G s -> Bool -> [(EPTrail,TrColor)] -> SearchCont s -> ST s (Search [FTrail])
+solveIter gf noLaterReach endPoints@((trail,trailC):laterEps) onSuccess
 -- (trail, trailC) is what we are currently finding a path for
 -- endPoints and laterEps are only used for checking reachability
     = do msgCounter <- newSTRef 0                                        
@@ -107,36 +115,33 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
              colors = trailC : map snd laterEps
              allReachable locs = and <$> mapM (reachability gf colors . fst) locs
              loop pos direction route
-               = let callLoop newPos newDir = loop newPos (Just newDir) $ route ++ [(pos, newDir)] in
+               = let callLoop newPos newDir = withOcc gf pos $ loop newPos (Just newDir) $ route ++ [(pos, newDir)] in
                  if pos == sink then do
                    -- Need to make sure there are no unreachable squares next to the sink
                    singS <- singularTail =<< freeN blocked pos 
                    if null singS then onSuccess blocked route -- trail finished. continue.
-                   else return SNext
-                -- Note that we can't set the sources to blocked in the current design,
-                -- as we need distances to be calculated for the sources, as reachability
-                -- is defined as the distance not being infinity.
-                -- This means that we need to exclude sources as being an available square during the search                     
-                 else if pos /= startPos && (elem pos sources) then return SNext 
-                 else withOcc gf pos $ -- trace (show res) $ return res
+                   else trace "Singular next to sink" return SNext
+                 else  
                    -- do all unsolved sources have a possible route to a sink
                    snextUnreachable msgCounter (srcsReachable gf laterEps) $ do
                        freeN1 <- freeN blocked pos -- get the free neighbours
-                       -- Check that from each free neighbour a sink is reachable
-                       snextIsolated (Just route) msgCounter (allReachable freeN1) $ do
+                       -- Check that from each free neighbour a sink from a later trail is reachable
+                       (if noLaterReach then id
+                        else snextIsolated (Just route) msgCounter (allReachable freeN1)) $ do
                            freeN3 <- (maybeAddSink pos) <$> filterM leadsToSink freeN1
                            if null freeN3 then trace "Stalled" $ return SNext
                            -- try each of the neighbours in turn in order to find a route to the sink                                  
-                           else do freeN2  <- singular freeN1 
+                           else do freeN2  <- singular freeN1
+                                   -- printSTDistArr dists 
                                    case freeN2 of
                                          [(newPos,newDir)] ->
                                                 -- we will stall out if freeN2 does not belong to freeN3
                                                 ifM (reachability gf [trailC] newPos) 
                                                     (callLoop newPos newDir)
-                                                    (return SNext)
+                                                    (tracePer' msgCounter "Singular not available" newPos SNext)
                                          []  -> do freeN4 <- favorSameDirection direction <$> sortByDistance freeN3
                                                    searchFold freeN4 (\(newPos, newDir) -> callLoop newPos newDir) 
-                                         others -> tracePer 10000 msgCounter "Singulars" SNext                                        
+                                         others -> tracePer traceEvery msgCounter "Singulars" SNext                                        
          loop (epSource trail) Nothing []
   where maxCoord = gMaxbound gf
         blocked = gOcc gf
@@ -152,16 +157,17 @@ solveIter gf endPoints@((trail,trailC):laterEps) onSuccess
                                             Just dir -> (sink,dir):locs
                                             Nothing -> locs
         singular = singularNeighbours maxCoord blocked (sinks ++ sources)
-        singularTail = singularNeighbours maxCoord blocked (tail sinks ++ tail sources)                                     
+        singularTail = singularNeighbours maxCoord blocked (tail sinks ++ tail sources)
+        tracePer' msgCounter reason var = tracePer traceEvery msgCounter (reason ++ show var)                                     
         snextUnless reason var msgCounter cond body 
-            = ifM cond body $ tracePer 10000 msgCounter (reason ++ maybe "" show var ) SNext
+            = ifM cond body $ tracePer traceEvery msgCounter (reason ++ maybe "" show var ) SNext
         snextIsolated = snextUnless "Isolated: "
         snextUnreachable msgCounter cond body = do
            c <- cond
            case c of
               Nothing -> body
               Just ep -> do count <- readSTRef msgCounter
-                            if count < 1000000 then tracePer 10000 msgCounter ("Sink unreachable." ++ show ep) SNext
+                            if count < 1000000 then tracePer traceEvery msgCounter ("Sink unreachable." ++ show ep) SNext
                             else return $! trace ("Sink unreachable. Aborting trail." ++ show ep) $ SAbortTrail ep
         -- Sort by reverse distance for the final color. i.e. aim for coverage
         comparison = if null laterEps then comparing $ Down . snd else comparing snd
@@ -190,16 +196,18 @@ tracePer every msgCounter msg value =
 
 
 -- | For each color find a route, search by backtracking (SNext triggers backtracking)
-solveGrid1 :: G s -> [(EPTrail, TrColor)] -> SearchCont s -> ST s (Search [FTrail])
-solveGrid1 gf endPoints onSuccess
+solveGrid1 :: G s -> Bool -> [(EPTrail, TrColor)] -> SearchCont s -> ST s (Search [FTrail])
+solveGrid1 gf noLaterReach endPoints onSuccess
    = do msgCounter <- newSTRef 0
         -- solveIter does the first trail, the continuation the rest 
         let bringTrailToFront epToFront ep = trace ("Moved to front: " ++ show epToFront)
                                                          loop (epToFront:(delete epToFront ep))
             loop eps@(_:ePoints) =
-              solveIter gf eps (\grid route -> 
+              solveIter gf noLaterReach eps (\grid route -> 
                   if null ePoints then onSuccess grid route
-                  else do res <- loop ePoints
+                  else do -- unsafeIOToST $ print route
+                          res <- loop ePoints
+                          -- error $ "Stop!" ++ show res
                           case res of  
                              SFinished routes -> return $ SFinished (route:routes)
                              SNext -> return SNext

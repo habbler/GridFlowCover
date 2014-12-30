@@ -10,8 +10,8 @@ import FindTrails
 -- | Solve the Grid used depth wise back tracking search
 searchForTrails :: Grid -> [FTrail]
 searchForTrails (Grid size endpoints) = runST $ do
-    gf <- initG (maxCoords size) (map epSink endpoints)
-    result <- solveGrid1 gf (zip endpoints [0,1..])
+    gf <- initG (maxCoords size) (map epSource endpoints) (map epSink endpoints)
+    result <- solveGrid1 gf True (zip endpoints [0,1..])
                 -- Success continuation 
                 (\grid route -> return $ SFinished [route]) 
     case result of 
@@ -21,9 +21,9 @@ searchForTrails (Grid size endpoints) = runST $ do
 -- | Solve the Grid used depth wise back tracking search
 searchForCover :: Grid -> [FTrail]
 searchForCover (Grid size endpoints) = runST $ do
-    gf <- initG maxBound (map epSink endpoints)
+    gf <- initG maxBound (map epSource endpoints) (map epSink endpoints)
     -- grid <- initBoolG maxBound False
-    result <- solveGrid1 gf (zip endpoints [0,1..])
+    result <- solveGrid1 gf False (zip endpoints [0,1..])
                 (\grid route -> do
                  -- Here we are at the bottom of the recursion. We only have the route
                  -- of the last color.

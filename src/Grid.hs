@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables, BangPatterns #-}
+-- | Incremental A* (but strict) on a grid. Multiple destinations (sinks) are supported.
 module Grid where
 
 import Control.Applicative
@@ -7,6 +8,7 @@ import Control.Monad.ST
 import Control.Monad.Extra
 import qualified Data.Foldable as F
 import qualified Data.Array as BA
+import Data.Array.MArray (freeze)
 import Data.Array.ST
 import Data.Array.Unboxed
 import Data.Word
@@ -22,11 +24,11 @@ type Coord = (Int, Int)
 type BoardSize = (Int, Int)
 type MaxCoords = (Int, Int)
 type Direction = Int
-type TrColor = Int
-type OCCG s = STUArray s Coord Bool
-type DistG s = STUArray s Coord Distance
-type Distances s = Array TrColor (DistG s)
-type Sinks = Array TrColor Coord
+type TrColor = Int -- ^ Trail colour. Coded as an integer starting at zero.
+type OCCG s = STUArray s Coord Bool -- ^ Array: True if the square is occupied (blocked)
+type DistG s = STUArray s Coord Distance -- ^ Array: Distance from the current square to the sink
+type Distances s = Array TrColor (DistG s) -- ^ One distance array per colour (and sink)
+type Sinks = Array TrColor Coord  -- ^ the location of the sink of each color
 
 type Distance = Word8
 infDist :: Distance
@@ -63,9 +65,11 @@ neighbourD (xl, yl) (xn, yn)
 
 testNd = neighbourD (1,1) (2,1)                            
 
+-- | Is c1 a neighbour of c2?
 isNeighbourOf :: Coord -> Coord -> Bool
 isNeighbourOf c1 c2 = isJust (neighbourD c1 c2)
 
+-- | Are any of cs a neighbour of coord?
 anyNeighbourOf :: [Coord] -> Coord -> Bool
 anyNeighbourOf cs coord = any (isNeighbourOf coord) cs 
                                     
@@ -119,6 +123,7 @@ processLayersM_ :: Monad m => ([t] -> m [t]) -> [t] -> m ()
 processLayersM_ f [] = return()       
 processLayersM_ f !l = f l >>= processLayersM_ f
 
+-- | Copy an array. Very slow, so not used anymore.
 copyArray :: (Ix i, MArray a e m) => a i e -> m (a i e)
 copyArray = mapArray id
 
@@ -192,12 +197,13 @@ initDist maxCoords occG sinkLoc
        return distG
        
 -- | Given a list of sinks return the structure of distance arrays. All other squares are empty
-initG :: MaxCoords -> [Coord] -> ST s (G s)       
-initG maxbound sinks 
+initG :: MaxCoords -> [Coord] -> [Coord] -> ST s (G s)       
+initG maxbound sources sinks 
     =  do occG <- initBoolG maxbound False
           -- We need to add all sinks to occG before we can start
           -- calculating any distances!!!
-          mapM_ (\loc -> writeArray occG loc True) sinks 
+          mapM_ (\loc -> writeArray occG loc True) sources
+          mapM_ (\loc -> writeArray occG loc True) sinks           
           distG <- mapM (initDist maxbound occG) sinks
           let numSinks = length sinks
               createColorArr :: [e] -> Array Int e
@@ -235,6 +241,10 @@ singularNeighbours maxCoords occG endPoints neighb
 -- | Print out an array of numbers                     
 printArr :: (IArray a e, PrintfArg e) => a (Int, Int) e -> IO ()
 printArr = printArray (printf "%3d") 5
+
+printSTDistArr :: DistG s -> ST s ()
+printSTDistArr arr = do iarr :: (UArray (Int,Int) Word8) <- freeze arr
+                        unsafeIOToST (printArr iarr) 
 
 -- | print out an array of values using function pf for each value
 printArray :: (IArray a e) => (e -> String) -> Int -> a (Int, Int) e -> IO ()                
