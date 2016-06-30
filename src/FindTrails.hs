@@ -26,11 +26,11 @@ If there is some space, chop out a section of nearby trail and recompute that.
 
 import Control.Monad
 import Control.Monad.ST
-import Control.Applicative
-import qualified Data.Array as BA
+-- import Control.Applicative
+-- import qualified Data.Array as BA
 import Data.Array.ST
 import Data.Array.Unboxed
-import Data.Maybe
+-- import Data.Maybe
 import Data.List
 import Data.Ord
 -- import qualified Data.Vector as V
@@ -82,8 +82,8 @@ withOcc gf loc body    =  do changeLoc gf True loc
                              res <- body
                              case res of
                                SFinished _ -> return res
-                               otherwise -> do changeLoc gf False loc
-                                               return res            
+                               _ -> do changeLoc gf False loc
+                                       return res            
 
 -- | Execute body for each location until body returns SFinished
 searchFold :: (Monad m) => [a] -> (a -> m (Search b)) -> m (Search b)
@@ -92,7 +92,7 @@ searchFold (loc:n2Rest) body =
   do res <- body loc
      case res of
        SNext -> searchFold n2Rest body
-       otherwise -> return res
+       _ -> return res
 
 {- | On success this function is called with the solved trail. 
      By returning SNext the function can request backtracking to find an alternate trail.
@@ -110,7 +110,7 @@ solveIter gf noLaterReach endPoints@((trail,trailC):laterEps) onSuccess
 -- (trail, trailC) is what we are currently finding a path for
 -- endPoints and laterEps are only used for checking reachability
     = do msgCounter <- newSTRef 0                                        
-         let startPos = epSource trail
+         let -- startPos = epSource trail
              leadsToSink (loc,_) = reachability gf [trailC] loc
              colors = trailC : map snd laterEps
              allReachable locs = and <$> mapM (reachability gf colors . fst) locs
@@ -141,7 +141,7 @@ solveIter gf noLaterReach endPoints@((trail,trailC):laterEps) onSuccess
                                                     (tracePer' msgCounter "Singular not available" newPos SNext)
                                          []  -> do freeN4 <- favorSameDirection direction <$> sortByDistance freeN3
                                                    searchFold freeN4 (\(newPos, newDir) -> callLoop newPos newDir) 
-                                         others -> tracePer traceEvery msgCounter "Singulars" SNext                                        
+                                         _ -> tracePer traceEvery msgCounter "Singulars" SNext                                        
          loop (epSource trail) Nothing []
   where maxCoord = gMaxbound gf
         blocked = gOcc gf
@@ -149,8 +149,8 @@ solveIter gf noLaterReach endPoints@((trail,trailC):laterEps) onSuccess
         sources = mapEndPoints epSource 
         sinks = mapEndPoints epSink
         dists = (gDists gf)!trailC
-        emptyBoard :: ST s (OCCG s)
-        emptyBoard = newArray ((0,0),maxCoord) False
+        -- emptyBoard :: ST s (OCCG s)
+        -- emptyBoard = newArray ((0,0),maxCoord) False
         sink = epSink trail
         freeN = freeNeighbours maxCoord
         maybeAddSink pos locs = case neighbourD sink pos of
@@ -172,7 +172,7 @@ solveIter gf noLaterReach endPoints@((trail,trailC):laterEps) onSuccess
         -- Sort by reverse distance for the final color. i.e. aim for coverage
         comparison = if null laterEps then comparing $ Down . snd else comparing snd
         sortByDistance locs = map fst <$> sortBy comparison
-                                 <$> mapM (\p@(loc,direction) -> (p,) <$> readArray dists loc) locs
+                                 <$> mapM (\p@(loc,_dir) -> (p,) <$> readArray dists loc) locs
         favorSameDirection direction locs = maybe locs 
              (\direction1 -> maybe locs (\loc -> loc:(delete loc locs)) 
                                  $ find (\(_,dir) -> dir == direction1) locs) direction 
@@ -198,7 +198,7 @@ tracePer every msgCounter msg value =
 -- | For each color find a route, search by backtracking (SNext triggers backtracking)
 solveGrid1 :: G s -> Bool -> [(EPTrail, TrColor)] -> SearchCont s -> ST s (Search [FTrail])
 solveGrid1 gf noLaterReach endPoints onSuccess
-   = do msgCounter <- newSTRef 0
+   = do -- msgCounter <- newSTRef 0
         -- solveIter does the first trail, the continuation the rest 
         let bringTrailToFront epToFront ep = trace ("Moved to front: " ++ show epToFront)
                                                          loop (epToFront:(delete epToFront ep))

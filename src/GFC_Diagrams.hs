@@ -5,7 +5,7 @@ module GFC_Diagrams( main, genOutput, genOutputF) where
 import Diagrams.Prelude
 import Diagrams.Backend.SVG
 import Diagrams.Backend.SVG.CmdLine
-import Text.Blaze.Svg.Renderer.Utf8
+-- import Text.Blaze.Svg.Renderer.Utf8
 
 import FindTrails (Grid(..), EPTrail(EndPoints))
 import FindFlowCover 
@@ -17,29 +17,29 @@ import Grid (Coord)
 -- goes through the center for each square.
 plotCenter :: (Fractional t1, Fractional t2, Integral a, Integral a1) =>
                 t -> (a, a1) -> (t1, t2)
-plotCenter size (x,y) = (fscale x , fscale y )
+plotCenter _size (x,y) = (fscale x , fscale y )
   where fscale w = fromIntegral w + 0.5
 
 -- testTrail =  fromVertices $ map (p2 . (plotCenter (2,2))) [(0,0),(1,0),(1,1),(0,1)]
 -- | Draws the trail on the grid
-testTrailD :: (Integral a) => t -> [(a, a)] -> QDiagram SVG R2 Any
-testTrailD  size trail =  lw 0.2 $ fromVertices $ map (p2 . scaleGrid) trail -- 
-                      where scaleGrid = plotCenter size -- (gSize grid)
+testTrailD :: (Integral a) => t -> [(a, a)] -> QDiagram SVG V2 Float Any
+testTrailD  size' trail =  lw 1.5 $ fromVertices $ map (p2 . scaleGrid) trail -- 
+                      where scaleGrid = plotCenter size' -- (gSize grid)
 
 -- | Puts a border around the grid                       
-borderD :: (Integral t) => (t,t) -> QDiagram SVG R2 Any
-borderD size = fromVertices $ map p2 [(0,0),(xB,0),(xB,yB),(0,yB),(0,0)]
-                where (xS,yS) = size -- gSize grid
+borderD :: (Integral t) => (t,t) -> QDiagram SVG V2 Float Any
+borderD size' = fromVertices $ map p2 [(0,0),(xB,0),(xB,yB),(0,yB),(0,0)]
+                where (xS,yS) = size' -- gSize grid
                       xB = fromIntegral xS
                       yB = fromIntegral yS
 
 -- | Draws all the trails on the grid                      
-plotTrails :: (Integral a) => (a, a) -> [[(a, a)]] -> QDiagram SVG R2 Any
-plotTrails size trails = (trailD `atop` borderD size) # centerXY # pad 1.1
-  where trailD = mconcat $ map (testTrailD size) trails
+plotTrails :: (Integral a) => (a, a) -> [[(a, a)]] -> QDiagram SVG V2 Float Any
+plotTrails size' trails = (trailD `atop` borderD size') # centerXY # pad 1.1
+  where trailD = mconcat $ map (testTrailD size') trails
 
 -- | Calls method and draws the resulting trails on the grid
-testOutputD :: (Grid -> [[Coord]]) -> Grid -> QDiagram SVG R2 Any
+testOutputD :: (Grid -> [[Coord]]) -> Grid -> QDiagram SVG V2 Float Any
 testOutputD method grid = plotTrails (gSize grid) (method grid)
         
 genOutput :: Grid -> IO ()
@@ -76,7 +76,7 @@ testGrid14d = Grid (9,9) [EndPoints (5,4) (7,0), EndPoints (3,5) (6,5), EndPoint
 -- out1 = renderSvg $ renderDia SVG (SVGOptions (Dims 200 200) Nothing) (testOutputD testGrid1)        
 
 main :: IO () 
-main = genOutputF testGrid14
+main = genOutput testGrid9a
 main1 = defaultMain (plotTrails (9,9) [map fst 
           [((5,4),2),((5,3),2),((5,2),2),((5,1),1),((6,1),1),((7,1),2)]
             ])

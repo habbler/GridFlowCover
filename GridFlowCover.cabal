@@ -13,10 +13,10 @@ library
                     FindFlowCover,
                     GFC_Diagrams
   build-depends:    
-                    base ==4.6.*, array ==0.4.*, vector ==0.10.*,
-                    diagrams-core == 1.0.*, diagrams-lib ==1.0.*, diagrams-svg ==1.0.*,
+                    base >=4.6 && < 5.0 , array >=0.4 && < 0.6, vector >= 0.10 && < 0.12,
+                    diagrams-core == 1.*, diagrams-lib ==1.*, diagrams-svg ==1.*,
                     blaze-svg >=0.3.3 && <0.4,
-                    extra >=1.0 && <1.1
+                    extra >=1.0 && < 1.5
   hs-source-dirs:   src
   extensions:       DoAndIfThenElse
   ghc-options:      -fwarn-missing-signatures -O -fprof-auto
@@ -26,8 +26,8 @@ test-suite GFCTest
   main-is:         GFCTest.hs
   ghc-options:     -Wall -rtsopts
   build-depends:   
-                  base >= 4, HTF > 0.9, array ==0.4.*, HUnit,
-                  diagrams-core == 1.0.*, diagrams-svg ==1.0.*, diagrams-svg ==1.0.*,
+                  base >= 4, HTF > 0.9, array >=0.4 && < 0.6, HUnit,
+                  diagrams-core == 1.*, diagrams-svg ==1.*, diagrams-svg ==1.*,
                   GridFlowCover
   other-modules:   
                    GridTest,

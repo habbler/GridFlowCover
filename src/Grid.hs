@@ -1,20 +1,22 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables, BangPatterns #-}
 -- | Incremental A* (but strict) on a grid. Multiple destinations (sinks) are supported.
 module Grid where
 
-import Control.Applicative
+-- import Control.Applicative
 import Control.Monad
 import Control.Monad.ST
+import Control.Monad.ST.Unsafe
 import Control.Monad.Extra
-import qualified Data.Foldable as F
-import qualified Data.Array as BA
-import Data.Array.MArray (freeze)
+-- import qualified Data.Foldable as F
+-- import qualified Data.Array as BA
+-- import Data.Array.MArray (freeze)
 import Data.Array.ST
 import Data.Array.Unboxed
 import Data.Word
 import Data.Maybe
-import Data.List
-import Debug.Trace
+-- import Data.List
+-- import Debug.Trace
 
 import Text.Printf
 
@@ -47,6 +49,7 @@ updateCoord (x,y) direction = case direction of
                                     1 -> (x+1,y) -- E
                                     2 -> (x,y-1) -- S  
                                     3 -> (x-1,y) -- W
+                                    _ -> error "updateCoord"
 
 -- | Find the direction from the first coord to the second - inverse of updateCoord
 neighbourD :: Coord -> Coord -> Maybe Direction
@@ -55,14 +58,15 @@ neighbourD (xl, yl) (xn, yn)
     case yl - yn of
         - 1 -> Just 2
         1 -> Just 0
-        otherwise -> Nothing
+        _ -> Nothing
   | yl == yn =
     case xl - xn of
         - 1 -> Just 3
         1 -> Just 1
-        otherwise -> Nothing
-  | otherwise = Nothing
+        _ -> Nothing
+  | True = Nothing
 
+testNd :: Maybe Direction
 testNd = neighbourD (1,1) (2,1)                            
 
 -- | Is c1 a neighbour of c2?
@@ -88,7 +92,7 @@ neighbours r0 f (bX,bY) (x,y)
 -- | Return the neighbours where occG is false
 falseNeighbours ::  MaxCoords -> OCCG s -> Coord -> ST s [Coord]
 falseNeighbours maxCoords occG (x,y) = neighbours [] ifm maxCoords (x,y) 
-  where ifm l d !r = do occ <- readArray occG l
+  where ifm l _ !r = do occ <- readArray occG l
                         return $! if occ then r else l:r
 
 -- | Return the neighbours where occG is false, plus the direction to them                        
@@ -100,14 +104,14 @@ freeNeighbours maxCoords occG = neighbours [] ifm maxCoords
 -- | Count the number of free neighbours (occG is false)                         
 countFreeNeighbours ::  MaxCoords -> OCCG s -> Coord -> ST s Int
 countFreeNeighbours maxCoords occG = neighbours 0 ifm maxCoords 
-  where ifm l d r = do occ <- readArray occG l
+  where ifm l _ r = do occ <- readArray occG l
                        if occ then return r else return $! r + 1 
 
                      
 -- | Find the lowest value from distG among the neighbours
 minNeighbours ::  MaxCoords -> DistG s -> Coord -> ST s Distance
 minNeighbours maxCoords distG = neighbours infDist ifm maxCoords
-  where ifm l d r = do val <- readArray distG l
+  where ifm l _ r = do val <- readArray distG l
                        return $! if val < r then val else r
                        
 -- | Initialise a bool array                       
@@ -120,7 +124,7 @@ initDistG maxCoords = newArray ((0,0), maxCoords)
 
 -- | call function f repeatedly on its own output list, until that is empty           
 processLayersM_ :: Monad m => ([t] -> m [t]) -> [t] -> m ()
-processLayersM_ f [] = return()       
+processLayersM_ _ [] = return()       
 processLayersM_ f !l = f l >>= processLayersM_ f
 
 -- | Copy an array. Very slow, so not used anymore.
@@ -147,8 +151,8 @@ updateDists maxCoords occG distG lastChanged
                           return (loc:accumMins, accumInf)
                         -- otherwise if it is larger than us, it might be deriving it distance from us,
                         -- which is now invalid. We set all non infinity neighbours onto the processing queue  
-                        else do neighbours <- falseNeighbours maxCoords occG loc
-                                n1 <- filterM notInf neighbours
+                        else do neighbours' <- falseNeighbours maxCoords occG loc
+                                n1 <- filterM notInf neighbours'
                                 return (accumMins, accumInf ++ n1)
 
            fCalcMin = fCalcMinW maxCoords distG occG
@@ -165,9 +169,9 @@ updateDists maxCoords occG distG lastChanged
         do -- dist <- readArray distG lastChanged
            -- when (dist == 0) $ error "dist == 0"
            writeArray distG lastChanged infDist
-           neighbours <- falseNeighbours maxCoords occG lastChanged
+           neighbours' <- falseNeighbours maxCoords occG lastChanged
            -- distances can only get worse when we add a blockage / remove a possible route
-           fDistances [] neighbours -- set the neighbours to infinity and spread out from there.
+           fDistances [] neighbours' -- set the neighbours to infinity and spread out from there.
         -- distances can only get better when we remove a blockage / add a new route   
         else fDistances [lastChanged] []
         
@@ -182,8 +186,8 @@ fCalcMinW maxCoords distG occG  = foldM fCalcMin []
                 let !newDist = max minN_dist $ minN_dist + 1
                 if locDist /= newDist then
                   do writeArray distG loc newDist
-                     neighbours <- falseNeighbours maxCoords occG loc
-                     return $! accumsMins ++ neighbours
+                     neighbours' <- falseNeighbours maxCoords occG loc
+                     return $! accumsMins ++ neighbours'
                 else return accumsMins
        
 -- | Returns a distance array give a array of blocked positions and a destination sinkLoc                   
@@ -192,8 +196,8 @@ initDist maxCoords occG sinkLoc
   = do distG <- initDistG maxCoords infDist
        writeArray distG sinkLoc 0
        doneG <- copyArray occG
-       neighbours <- falseNeighbours maxCoords doneG sinkLoc
-       processLayersM_ (fCalcMinW  maxCoords distG doneG) neighbours 
+       neighbours' <- falseNeighbours maxCoords doneG sinkLoc
+       processLayersM_ (fCalcMinW  maxCoords distG doneG) neighbours' 
        return distG
        
 -- | Given a list of sinks return the structure of distance arrays. All other squares are empty
@@ -248,15 +252,15 @@ printSTDistArr arr = do iarr :: (UArray (Int,Int) Word8) <- freeze arr
 
 -- | print out an array of values using function pf for each value
 printArray :: (IArray a e) => (e -> String) -> Int -> a (Int, Int) e -> IO ()                
-printArray pf colWidth array 
+printArray pf colWidth arr 
     = putStr $   "   " ++ concatMap (\ c -> padw [c]) (take (x2 - x1 + 1) colLabels) ++
   "\n" ++ concatMap rowOut [y1 .. y2]
-                        where colHeader c = printf "%3c" c
+                        where -- colHeader c = printf "%3c" c
                               padw = pad colWidth
-                              ((x1,y1),(x2,y2)) = bounds array 
+                              ((x1,y1),(x2,y2)) = bounds arr 
                               colLabels = "ABCDEFGHIJKLMNOPQRSTUVWXZY"
                               rowOut y = printf "%3d" y ++ concatMap output [x1..x2] ++ "\n"
-                               where output x = padw $ pf (array!(x,y))
+                               where output x = padw $ pf (arr!(x,y))
                                       
 -- | Right justify in the field of length n                                     
 pad :: Int -> String -> String

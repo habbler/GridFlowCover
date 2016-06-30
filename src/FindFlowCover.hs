@@ -1,6 +1,7 @@
 module FindFlowCover where
 
 import Control.Monad.ST
+import Control.Monad.ST.Unsafe
 import Data.Array.MArray (getElems)
 
 import Grid (initG, updateCoord, Coord, Direction)
@@ -13,7 +14,7 @@ searchForTrails (Grid size endpoints) = runST $ do
     gf <- initG (maxCoords size) (map epSource endpoints) (map epSink endpoints)
     result <- solveGrid1 gf True (zip endpoints [0,1..])
                 -- Success continuation 
-                (\grid route -> return $ SFinished [route]) 
+                (\_grid route -> return $ SFinished [route]) 
     case result of 
       SFinished trail -> return trail
       SNext -> error "No solution exists"
