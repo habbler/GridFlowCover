@@ -59,6 +59,7 @@ testGrid14 = Grid (9,9) $ take 7
   EndPoints (2,2) (6,4), EndPoints (3,2) (6,6),  EndPoints (5,4) (7,0),
   EndPoints (5,0) (8,0)
  ]
+testGrid14a :: Grid
 testGrid14a = Grid (9,9) $ take 2
  [EndPoints (5,0) (8,0), EndPoints (5,4) (7,0), EndPoints (3,5) (6,5), EndPoints (1,2) (5,1), EndPoints (7,1) (5,3),
   EndPoints (2,2) (6,4), EndPoints (3,2) (6,6)    
